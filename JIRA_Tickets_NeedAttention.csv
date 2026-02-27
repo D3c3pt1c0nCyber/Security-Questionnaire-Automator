@@ -1,0 +1,14 @@
+Ticket Key,Summary,Status,Priority,Issue Type,Product,Due Date,Created,Last Updated,Days Open,Days Since Update,Days Past Due,Urgency,JIRA URL
+ISC-53,"Advent Health (TS, Scheduling, Evals+ and CheckIT)",ASSIGNED,P3,RFP,"TargetSolutions, Scheduling, Evals+, CheckIT",01/30/2026,01/21/2026,02/18/2026,31,3,22,MEDIUM,https://lmsportal.atlassian.net/browse/ISC-53
+ISC-75,Anglo Gold Ashanti - Convergence,ASSIGNED,P3,RFP,Convergence,02/20/2026,02/14/2026,02/17/2026,7,4,1,MEDIUM,https://lmsportal.atlassian.net/browse/ISC-75
+ISC-74,Stony Brook University NY - Scheduling,ASSIGNED,P3,RFP,Scheduling,02/17/2026,02/14/2026,02/14/2026,7,7,4,MEDIUM,https://lmsportal.atlassian.net/browse/ISC-74
+ISC-73,City of Alexandria (VA) - TargetSolutions,ASSIGNED,P3,RFP,TargetSolutions,02/20/2026,02/14/2026,02/14/2026,7,7,1,MEDIUM,https://lmsportal.atlassian.net/browse/ISC-73
+ISC-71,University of North Texas Dallas - LiveSafe,ASSIGNED,P3,RFP,LiveSafe,12/15/2025,12/08/2025,02/08/2026,75,13,68,CRITICAL,https://lmsportal.atlassian.net/browse/ISC-71
+ISC-70,Hertz - EHS,In Progress,P3,RFP,EHS,12/05/2025,11/21/2025,02/08/2026,92,13,78,CRITICAL,https://lmsportal.atlassian.net/browse/ISC-70
+ISC-69,Complete HECVAT 4.1.2 for SafeLMS,Projects - In Progress,P3,Task,SafeLMS,No due date,10/13/2025,02/08/2026,131,13,N/A,LOW,https://lmsportal.atlassian.net/browse/ISC-69
+ISC-67,RFP Genie - Importing and Arranging Data,Time Tracking,P3,Task,RFP Genie,No due date,11/17/2025,02/08/2026,96,13,N/A,LOW,https://lmsportal.atlassian.net/browse/ISC-67
+ISC-56,Northwestern Mutual - Convergence (Follow up question),In Progress,P3,RFP,Convergence,01/23/2026,01/21/2026,01/26/2026,31,26,29,HIGH,https://lmsportal.atlassian.net/browse/ISC-56
+ISC-55,Jefferson County Schools - SafeLMS and EV+/PD (Follow-up),In Progress,P3,RFP,"SafeLMS, EV+/PD",01/22/2026,01/21/2026,01/23/2026,31,29,30,HIGH,https://lmsportal.atlassian.net/browse/ISC-55
+ISC-52,Amp Americas - EHS,ASSIGNED,P3,RFP,EHS,01/23/2026,01/21/2026,01/21/2026,31,31,29,HIGH,https://lmsportal.atlassian.net/browse/ISC-52
+ISC-48,University of Miami: Emergency Security Check - SafeLMS,ASSIGNED,P3,RFP,SafeLMS,01/16/2026,01/12/2026,01/14/2026,40,38,36,HIGH,https://lmsportal.atlassian.net/browse/ISC-48
+ISC-42,Security Assessment Questionnaires 2026,In Progress,P3,Epic,Security Assessments,12/31/2026,01/05/2026,01/27/2026,47,25,-313,LOW,https://lmsportal.atlassian.net/browse/ISC-42

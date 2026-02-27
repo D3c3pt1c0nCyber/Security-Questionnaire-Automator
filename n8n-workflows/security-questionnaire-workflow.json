@@ -1,0 +1,230 @@
+{
+  "name": "Security Questionnaire Automator",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger-1",
+      "name": "Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "operation": "fromFile",
+        "fileSelector": "data",
+        "options": {
+          "sheetName": {
+            "mode": "list",
+            "value": ""
+          },
+          "headerRow": true
+        }
+      },
+      "id": "parse-excel-1",
+      "name": "Parse Questionnaire Excel",
+      "type": "n8n-nodes-base.spreadsheetFile",
+      "typeVersion": 4.5,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "filePath": "={{ $json.filePath }}",
+        "options": {}
+      },
+      "id": "read-file-1",
+      "name": "Read Questionnaire File",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Load answer bank files from disk\nconst fs = require('fs');\nconst path = require('path');\n\nconst BANK_ROOT = 'C:/Users/joie.sayen/Claude Code/security-questionnaire-bank';\n\nfunction readMarkdownFiles(dir) {\n  const results = [];\n  try {\n    const entries = fs.readdirSync(dir, { withFileTypes: true });\n    for (const entry of entries) {\n      const fullPath = path.join(dir, entry.name);\n      if (entry.isDirectory()) {\n        results.push(...readMarkdownFiles(fullPath));\n      } else if (entry.name.endsWith('.md') && entry.name !== 'README.md') {\n        try {\n          const content = fs.readFileSync(fullPath, 'utf-8');\n          results.push({\n            file: fullPath.replace(BANK_ROOT + '/', '').replace(BANK_ROOT + '\\\\', ''),\n            content: content\n          });\n        } catch (e) {\n          // skip unreadable files\n        }\n      }\n    }\n  } catch (e) {\n    // skip unreadable dirs\n  }\n  return results;\n}\n\n// Read categories (org-wide answers)\nconst categories = readMarkdownFiles(path.join(BANK_ROOT, 'categories'));\n\n// Read policies\nconst policies = readMarkdownFiles(path.join(BANK_ROOT, 'policies'));\n\n// Read product profiles and overrides\nconst products = readMarkdownFiles(path.join(BANK_ROOT, 'products'));\n\n// Read glossary\nlet glossary = '';\ntry {\n  glossary = fs.readFileSync(path.join(BANK_ROOT, 'glossary.md'), 'utf-8');\n} catch (e) {}\n\n// Build the knowledge base context string\nconst knowledgeBase = [\n  '=== CATEGORY ANSWERS (Organization-wide) ===',\n  ...categories.map(f => `\\n--- ${f.file} ---\\n${f.content}`),\n  '\\n=== POLICIES ===',\n  ...policies.map(f => `\\n--- ${f.file} ---\\n${f.content}`),\n  '\\n=== PRODUCT DETAILS & OVERRIDES ===',\n  ...products.map(f => `\\n--- ${f.file} ---\\n${f.content}`),\n  '\\n=== GLOSSARY ===',\n  glossary\n].join('\\n');\n\n// Get all questionnaire items from previous node\nconst items = $input.all();\n\n// Batch questions into groups of 10 for efficient API calls\nconst batchSize = 10;\nconst batches = [];\n\nfor (let i = 0; i < items.length; i += batchSize) {\n  const batch = items.slice(i, i + batchSize);\n  const questions = batch.map((item, idx) => {\n    // Try to find the question column - common column names\n    const json = item.json;\n    const questionCol = Object.keys(json).find(k => \n      /question|query|requirement|control|item|description/i.test(k)\n    ) || Object.keys(json)[1] || Object.keys(json)[0];\n    \n    const idCol = Object.keys(json).find(k => \n      /id|number|#|ref|index/i.test(k)\n    ) || Object.keys(json)[0];\n    \n    return {\n      index: i + idx,\n      id: json[idCol] || `Q${i + idx + 1}`,\n      question: json[questionCol] || '',\n      originalData: json\n    };\n  });\n  \n  batches.push({\n    json: {\n      batchIndex: Math.floor(i / batchSize),\n      questions: questions,\n      knowledgeBase: knowledgeBase,\n      totalQuestions: items.length\n    }\n  });\n}\n\nreturn batches;"
+      },
+      "id": "code-load-bank-1",
+      "name": "Load Answer Bank & Batch Questions",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "YOUR_ANTHROPIC_API_KEY_HERE"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  model: 'claude-sonnet-4-20250514',\n  max_tokens: 4096,\n  messages: [{\n    role: 'user',\n    content: `You are a security questionnaire answering assistant. Using the knowledge base below, answer each question accurately and professionally.\n\nPRIORITY ORDER FOR ANSWERS:\n1. Product-specific overrides (highest priority)\n2. Organization-wide category answers\n3. Policy documents\n4. Your security knowledge (only if no answer exists in the bank)\n\nRULES:\n- If the answer bank has a matching Q&A, use that answer (adapt wording if needed)\n- If no match exists, draft a professional answer based on the policies and mark it as [NEEDS REVIEW]\n- Keep answers concise but complete\n- Use the glossary for consistent terminology\n- Return a JSON array with objects: {\"id\": \"...\", \"question\": \"...\", \"answer\": \"...\", \"source\": \"...\", \"confidence\": \"high|medium|low\"}\n\nKNOWLEDGE BASE:\n${$json.knowledgeBase.substring(0, 180000)}\n\nQUESTIONS TO ANSWER:\n${$json.questions.map(q => `[${q.id}] ${q.question}`).join('\\n')}\n\nRespond ONLY with the JSON array, no other text.`\n  }]\n}) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "claude-api-1",
+      "name": "Claude API - Generate Answers",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [880, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Claude API responses and merge with original data\nconst items = $input.all();\nconst allAnswered = [];\n\nfor (const item of items) {\n  try {\n    const response = item.json;\n    \n    // Extract text content from Claude response\n    let text = '';\n    if (response.content && Array.isArray(response.content)) {\n      text = response.content.map(c => c.text || '').join('');\n    } else if (typeof response.body === 'string') {\n      text = response.body;\n    } else if (response.data) {\n      text = JSON.stringify(response.data);\n    }\n    \n    // Parse JSON from response\n    const jsonMatch = text.match(/\\[\\s*\\{[\\s\\S]*\\}\\s*\\]/);\n    if (jsonMatch) {\n      const answers = JSON.parse(jsonMatch[0]);\n      for (const ans of answers) {\n        allAnswered.push({\n          json: {\n            'Question ID': ans.id || '',\n            'Question': ans.question || '',\n            'Answer': ans.answer || '',\n            'Source': ans.source || '',\n            'Confidence': ans.confidence || 'low',\n            'Needs Review': ans.confidence === 'low' ? 'YES' : 'NO'\n          }\n        });\n      }\n    }\n  } catch (e) {\n    allAnswered.push({\n      json: {\n        'Question ID': 'ERROR',\n        'Question': 'Failed to parse batch',\n        'Answer': e.message,\n        'Source': 'error',\n        'Confidence': 'none',\n        'Needs Review': 'YES'\n      }\n    });\n  }\n}\n\nif (allAnswered.length === 0) {\n  return [{ json: { error: 'No answers generated. Check Claude API response.' } }];\n}\n\nreturn allAnswered;"
+      },
+      "id": "code-parse-1",
+      "name": "Parse Answers",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 300]
+    },
+    {
+      "parameters": {
+        "operation": "toFile",
+        "fileFormat": "xlsx",
+        "options": {
+          "fileName": "completed-questionnaire.xlsx",
+          "sheetName": "Answers"
+        }
+      },
+      "id": "write-excel-1",
+      "name": "Write Completed Excel",
+      "type": "n8n-nodes-base.spreadsheetFile",
+      "typeVersion": 4.5,
+      "position": [1320, 300]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "C:/Users/joie.sayen/Claude Code/n8n-workflows/output/completed-questionnaire.xlsx",
+        "options": {}
+      },
+      "id": "save-file-1",
+      "name": "Save to Disk",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [1540, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "filePath",
+              "value": "C:/Users/joie.sayen/Claude Code/n8n-workflows/input/questionnaire.xlsx"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-path-1",
+      "name": "Set Input File Path",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [220, 500],
+      "disabled": true
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Read Questionnaire File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Questionnaire File": {
+      "main": [
+        [
+          {
+            "node": "Parse Questionnaire Excel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Questionnaire Excel": {
+      "main": [
+        [
+          {
+            "node": "Load Answer Bank & Batch Questions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Answer Bank & Batch Questions": {
+      "main": [
+        [
+          {
+            "node": "Claude API - Generate Answers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude API - Generate Answers": {
+      "main": [
+        [
+          {
+            "node": "Parse Answers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Answers": {
+      "main": [
+        [
+          {
+            "node": "Write Completed Excel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Completed Excel": {
+      "main": [
+        [
+          {
+            "node": "Save to Disk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "security-questionnaire"
+    }
+  ]
+}
