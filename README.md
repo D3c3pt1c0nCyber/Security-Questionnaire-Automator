@@ -17,14 +17,14 @@ A comprehensive solution for automating security questionnaire workflows using A
 - Question matching and answer migration with confidence scoring
 - Intelligent answer adaptation across framework versions
 - Confluence and Jira search integration
-- Multi-model support (Claude Opus 4, Sonnet 4, Haiku 4.5)
+- Multi-provider AI support: Claude (Opus, Sonnet, Haiku), OpenAI (GPT-4, GPT-3.5), Google Gemini, Cohere, HuggingFace
 
 ## Quick Start
 
 ### Prerequisites
 - Node.js 18+
 - npm or yarn
-- Anthropic API key (Claude)
+- At least one AI API key: Anthropic (Claude), OpenAI, Google Gemini, Cohere, or HuggingFace
 - Atlassian credentials (Jira/Confluence) - optional
 
 ### Installation
@@ -37,16 +37,17 @@ A comprehensive solution for automating security questionnaire workflows using A
 
 2. **Install Dashboard Dependencies**
    ```bash
-   cd n8n-workflows/dashboard
+   cd app
    npm install
    ```
 
 3. **Configure Environment**
    ```bash
+   cd app
    cp .env.example .env
    ```
 
-4. **Edit `.env` with your credentials:**
+4. **Edit `app/.env` with your credentials:**
    ```env
    # Atlassian / Jira / Confluence
    ATLASSIAN_BASE=https://your-instance.atlassian.net
@@ -59,9 +60,10 @@ A comprehensive solution for automating security questionnaire workflows using A
 
 ### Running the Dashboard
 
-From the `n8n-workflows/dashboard` directory:
+From the `app` directory:
 
 ```bash
+cd app
 npm start
 ```
 
@@ -70,19 +72,23 @@ Access the dashboard at: `http://localhost:3456`
 ## Project Structure
 
 ```
-├── n8n-workflows/
-│   ├── dashboard/
-│   │   ├── server.js              # Express backend
-│   │   ├── public/
-│   │   │   └── index.html         # UI (Chat, Batch, Import, HECVAT, Jira)
-│   │   ├── package.json
-│   │   ├── .env.example
-│   │   └── uploads/               # Temporary file uploads
-│   ├── output/                    # Generated export files
+├── app/                           # Main application
+│   ├── server.js                  # Express backend
+│   ├── public/
+│   │   └── index.html             # UI (Chat, Batch, Import, HECVAT, Jira)
+│   ├── package.json
+│   ├── .env.example
+│   └── uploads/                   # Temporary file uploads
+│
+├── answer-bank/                   # Answer bank repository
+│   └── [Categories and answers]
+│
+├── workflows/
 │   └── security-questionnaire-workflow.json  # n8n workflow definition
 │
-├── security-questionnaire-bank/   # Answer bank repository
-│   └── [Categories and answers]
+├── data/
+│   ├── input/                     # Input files for processing
+│   └── output/                    # Generated export files
 │
 └── README.md
 ```
@@ -91,13 +97,33 @@ Access the dashboard at: `http://localhost:3456`
 
 ### API Keys
 
-**For Claude AI (Required for Chat/Batch/Migration):**
-- Get your API key from [Anthropic Console](https://console.anthropic.com)
-- Set it in the dashboard UI or via environment variable
+**AI Provider Options (Select One or More):**
+
+1. **Anthropic Claude (Recommended)**
+   - Get your API key from [Anthropic Console](https://console.anthropic.com)
+   - Models: Claude 3 Opus, Claude 3 Sonnet, Claude 3 Haiku
+
+2. **OpenAI**
+   - Get your API key from [OpenAI Platform](https://platform.openai.com)
+   - Models: GPT-4, GPT-3.5-turbo
+
+3. **Google Gemini**
+   - Get your API key from [Google AI Studio](https://makersuite.google.com/app/apikey)
+   - Models: Gemini 1.5 Pro, Gemini 1.5 Flash
+
+4. **Cohere**
+   - Get your API key from [Cohere Dashboard](https://dashboard.cohere.com)
+   - Models: Command R+, Command R
+
+5. **HuggingFace**
+   - Get your API key from [HuggingFace Settings](https://huggingface.co/settings/tokens)
+   - Uses various open-source models
+
+Set your preferred provider and API key in the dashboard UI.
 
 **For Jira/Confluence (Optional):**
 - Generate API token from Atlassian: https://id.atlassian.com/manage/api-tokens
-- Add credentials to `.env` file in dashboard directory
+- Configure directly in the dashboard UI under "Jira Authentication"
 
 ## Usage Guide
 
