@@ -73,6 +73,269 @@ function sanitizeJql(str) {
   return (str || '').replace(/[\\"\[\]{}()+\-&|!^~*?:]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+// --- DOCX XML helpers ---
+function docxGetCells(rowXml) {
+  const cells = [];
+  const re = /<w:tc\b[\s\S]*?<\/w:tc>/g;
+  let m;
+  while ((m = re.exec(rowXml)) !== null) cells.push(m[0]);
+  return cells;
+}
+
+function docxGetCellText(cellXml) {
+  const texts = [];
+  const re = /<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g;
+  let m;
+  while ((m = re.exec(cellXml)) !== null) texts.push(m[1]);
+  return texts.join('').trim();
+}
+
+function docxBuildCell(originalCellXml, text) {
+  const tcPrMatch = originalCellXml.match(/<w:tcPr[\s\S]*?<\/w:tcPr>/);
+  const tcPr = tcPrMatch ? tcPrMatch[0] : '';
+  const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return `<w:tc>${tcPr}<w:p><w:r><w:t xml:space="preserve">${escaped}</w:t></w:r></w:p></w:tc>`;
+}
+
+// Extract structured questions from DOCX table XML
+function extractQuestionsFromDocxFile(filePath) {
+  const AdmZip = require('adm-zip');
+  try {
+    const zip = new AdmZip(filePath);
+    const xml = zip.readAsText('word/document.xml');
+    const questions = [];
+    const tableRe = /<w:tbl\b[\s\S]*?<\/w:tbl>/g;
+    let tableMatch;
+    while ((tableMatch = tableRe.exec(xml)) !== null) {
+      const tableXml = tableMatch[0];
+      const rows = [];
+      const rowRe = /<w:tr\b[\s\S]*?<\/w:tr>/g;
+      let rowMatch;
+      while ((rowMatch = rowRe.exec(tableXml)) !== null) rows.push(rowMatch[0]);
+      if (rows.length < 2) continue;
+      const headerCells = docxGetCells(rows[0]);
+      const headerTexts = headerCells.map(docxGetCellText);
+      const qColIdx = headerTexts.findIndex(h => /question|requirement|control|description|query/i.test(h));
+      if (qColIdx === -1) continue;
+      const idColIdx = headerTexts.findIndex((h, i) => i !== qColIdx && /^(id|#|ref|no\.?|num|section|item)\b/i.test(h));
+      for (let ri = 1; ri < rows.length; ri++) {
+        const cells = docxGetCells(rows[ri]);
+        const qText = qColIdx < cells.length ? docxGetCellText(cells[qColIdx]) : '';
+        const idText = idColIdx >= 0 && idColIdx < cells.length ? docxGetCellText(cells[idColIdx]) : '';
+        if (qText.length > 5) {
+          questions.push({ index: questions.length, id: idText || `Q${questions.length + 1}`, question: qText });
+        }
+      }
+    }
+    return questions;
+  } catch (e) {
+    console.error('DOCX question extraction failed:', e.message);
+    return [];
+  }
+}
+
+// Extract questions from raw document text using Claude (for PDF, TXT, etc.)
+function extractQuestionsFromText(apiKey, text, product) {
+  return new Promise((resolve, reject) => {
+    const truncated = text.substring(0, 50000);
+    const prompt = `You are analyzing a security questionnaire document. Extract all questions/requirements and return them as a JSON array.
+
+DOCUMENT TEXT:
+${truncated}
+
+Return ONLY a JSON array:
+[{"id": "Q1", "question": "full question text here"}, ...]
+
+Rules:
+- Extract actual security/compliance questions or requirements
+- Use existing numbering/IDs if present (like "1.1", "SEC-001", etc.)
+- Skip headers, section titles, instructions, and non-question text
+- Keep each question text complete
+- If no questions found, return []`;
+
+    const body = JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 8000,
+      messages: [{ role: 'user', content: prompt }]
+    });
+    const options = {
+      hostname: 'api.anthropic.com', path: '/v1/messages', method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'Content-Length': Buffer.byteLength(body) }
+    };
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', chunk => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const r = JSON.parse(data);
+          if (r.error) { reject(new Error(r.error.message)); return; }
+          const txt = r.content?.map(c => c.text || '').join('') || '';
+          const jsonMatch = txt.match(/\[\s*[\s\S]*?\s*\]/);
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]);
+            resolve(parsed.map((q, i) => ({ index: i, id: q.id || `Q${i + 1}`, question: String(q.question || '').trim() })).filter(q => q.question.length > 0));
+          } else { resolve([]); }
+        } catch (e) { reject(new Error('Failed to parse question extraction: ' + e.message)); }
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(60000, () => { req.destroy(); reject(new Error('Question extraction timed out')); });
+    req.write(body); req.end();
+  });
+}
+
+// Write answers back into a CSV file preserving the original structure
+function writeOutputCsv(answers, outputPath, originalInfo) {
+  try {
+    if (originalInfo?.originalFilePath && fs.existsSync(originalInfo.originalFilePath)) {
+      const raw = fs.readFileSync(originalInfo.originalFilePath, 'utf-8');
+      const wb = XLSX.read(raw, { type: 'string' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+      const headers = {};
+      for (let c = range.s.c; c <= range.e.c; c++) {
+        const cell = ws[XLSX.utils.encode_cell({ r: range.s.r, c })];
+        if (cell && cell.v != null) headers[String(cell.v).trim()] = c;
+      }
+      const qColIdx = originalInfo.questionColumn ? headers[originalInfo.questionColumn] : undefined;
+      const idColIdx = originalInfo.idColumn ? headers[originalInfo.idColumn] : undefined;
+
+      // Find existing response column
+      let ansColIdx = null;
+      for (const [name, colIdx] of Object.entries(headers)) {
+        if (name && /^(answer|response|reply|vendor.?response|assessment.?response)/i.test(name)) { ansColIdx = colIdx; break; }
+      }
+      if (ansColIdx == null) {
+        for (const [name, colIdx] of Object.entries(headers)) {
+          if (name && /answer|response/i.test(name) && colIdx !== qColIdx && colIdx !== idColIdx) { ansColIdx = colIdx; break; }
+        }
+      }
+
+      const lastCol = range.e.c;
+      let nextNew = lastCol + 1;
+      const aiAnsColIdx = ansColIdx != null ? ansColIdx : nextNew++;
+      if (ansColIdx == null) ws[XLSX.utils.encode_cell({ r: range.s.r, c: aiAnsColIdx })] = { t: 's', v: 'AI Answer' };
+      const srcColIdx = nextNew++, confColIdx = nextNew++, flagsColIdx = nextNew++;
+      ws[XLSX.utils.encode_cell({ r: range.s.r, c: srcColIdx })] = { t: 's', v: 'Source' };
+      ws[XLSX.utils.encode_cell({ r: range.s.r, c: confColIdx })] = { t: 's', v: 'Confidence' };
+      ws[XLSX.utils.encode_cell({ r: range.s.r, c: flagsColIdx })] = { t: 's', v: 'Flags' };
+
+      const answerByID = {}, answerByQ = {}, answerByIdx = {};
+      for (const a of answers) {
+        if (a.id) answerByID[String(a.id).trim()] = a;
+        if (a.question) answerByQ[a.question.trim().toLowerCase()] = a;
+        if (a.index != null) answerByIdx[a.index] = a;
+      }
+
+      let dataRowIdx = 0;
+      for (let r = range.s.r + 1; r <= range.e.r; r++) {
+        const idCell = idColIdx != null ? ws[XLSX.utils.encode_cell({ r, c: idColIdx })] : null;
+        const qCell = qColIdx != null ? ws[XLSX.utils.encode_cell({ r, c: qColIdx })] : null;
+        const rowId = idCell ? String(idCell.v || '').trim() : '';
+        const rowQ = qCell ? String(qCell.v || '').trim() : '';
+        if (!rowQ && !rowId) { dataRowIdx++; continue; }
+        let match = answerByID[rowId];
+        if (!match && rowQ) match = answerByQ[rowQ.toLowerCase()];
+        if (!match) match = answerByIdx[dataRowIdx];
+        dataRowIdx++;
+        if (match) {
+          ws[XLSX.utils.encode_cell({ r, c: aiAnsColIdx })] = { t: 's', v: match.answer || '' };
+          ws[XLSX.utils.encode_cell({ r, c: srcColIdx })] = { t: 's', v: match.source || '' };
+          ws[XLSX.utils.encode_cell({ r, c: confColIdx })] = { t: 's', v: match.confidence || 'low' };
+          ws[XLSX.utils.encode_cell({ r, c: flagsColIdx })] = { t: 's', v: (match.flags || []).join(', ') };
+        }
+      }
+      ws['!ref'] = XLSX.utils.encode_range({ s: range.s, e: { r: range.e.r, c: Math.max(range.e.c, flagsColIdx) } });
+      fs.writeFileSync(outputPath, XLSX.utils.sheet_to_csv(ws), 'utf-8');
+      return;
+    }
+  } catch (e) { console.error('CSV write failed, using generic:', e.message); }
+  // Fallback: generic CSV
+  const csvRows = ['Question ID,Question,Answer,Source,Confidence,Flags'];
+  for (const a of answers) {
+    csvRows.push([a.id, a.question, a.answer, a.source, a.confidence, (a.flags || []).join(';')]
+      .map(v => `"${String(v || '').replace(/"/g, '""')}"`).join(','));
+  }
+  fs.writeFileSync(outputPath, csvRows.join('\n'), 'utf-8');
+}
+
+// Write answers back into a DOCX file preserving the original table structure
+function writeOutputDocx(answers, outputPath, originalInfo) {
+  const AdmZip = require('adm-zip');
+  try {
+    if (!originalInfo?.originalFilePath || !fs.existsSync(originalInfo.originalFilePath)) throw new Error('Original file not found');
+    fs.copyFileSync(originalInfo.originalFilePath, outputPath);
+    const zip = new AdmZip(outputPath);
+    let xml = zip.readAsText('word/document.xml');
+
+    const answerByID = {}, answerByQ = {}, answerByIdx = {};
+    for (const a of answers) {
+      if (a.id) answerByID[String(a.id).trim()] = a;
+      if (a.question) answerByQ[a.question.trim().toLowerCase()] = a;
+      if (a.index != null) answerByIdx[a.index] = a;
+    }
+
+    let dataRowIdx = 0;
+    xml = xml.replace(/<w:tbl\b[\s\S]*?<\/w:tbl>/g, (tableXml) => {
+      const rows = [];
+      const rowRe = /<w:tr\b[\s\S]*?<\/w:tr>/g;
+      let rm;
+      while ((rm = rowRe.exec(tableXml)) !== null) rows.push(rm[0]);
+      if (rows.length < 2) return tableXml;
+
+      const headerTexts = docxGetCells(rows[0]).map(docxGetCellText);
+      const qColIdx = headerTexts.findIndex(h => /question|requirement|control|description/i.test(h));
+      const ansColIdx = headerTexts.findIndex(h => /answer|response|reply|vendor|assessment/i.test(h));
+      const idColIdx = headerTexts.findIndex((h, i) => i !== qColIdx && i !== ansColIdx && /^(id|#|ref|no\.?|num|section)\b/i.test(h));
+      if (qColIdx === -1 || ansColIdx === -1) return tableXml;
+
+      let newTableXml = tableXml;
+      for (let ri = 1; ri < rows.length; ri++) {
+        const rowXml = rows[ri];
+        const cells = docxGetCells(rowXml);
+        const qText = qColIdx < cells.length ? docxGetCellText(cells[qColIdx]) : '';
+        const idText = idColIdx >= 0 && idColIdx < cells.length ? docxGetCellText(cells[idColIdx]) : '';
+        if (!qText && !idText) { dataRowIdx++; continue; }
+        let match = idText ? answerByID[idText] : null;
+        if (!match && qText) match = answerByQ[qText.toLowerCase()];
+        if (!match) match = answerByIdx[dataRowIdx];
+        dataRowIdx++;
+        if (match && ansColIdx < cells.length) {
+          const newCell = docxBuildCell(cells[ansColIdx], match.answer || '');
+          newTableXml = newTableXml.replace(cells[ansColIdx], () => newCell);
+        }
+      }
+      return newTableXml;
+    });
+
+    zip.updateFile('word/document.xml', Buffer.from(xml, 'utf-8'));
+    zip.writeZip(outputPath);
+    return true;
+  } catch (e) {
+    console.error('DOCX write failed:', e.message);
+    return false;
+  }
+}
+
+// Dispatch output writing based on file type; returns the actual output path used
+function writeOutputFile(answers, desiredOutputPath, originalInfo, fileType) {
+  const ext = (fileType || '.xlsx').toLowerCase();
+  if (ext === '.docx') {
+    const ok = writeOutputDocx(answers, desiredOutputPath, originalInfo);
+    if (ok) return desiredOutputPath;
+    // DOCX failed — fallback to Excel
+    const xlsxPath = desiredOutputPath.replace(/\.docx$/i, '.xlsx');
+    writeOutputExcel(answers, xlsxPath, originalInfo);
+    return xlsxPath;
+  }
+  if (ext === '.csv') {
+    writeOutputCsv(answers, desiredOutputPath, originalInfo);
+    return desiredOutputPath;
+  }
+  writeOutputExcel(answers, desiredOutputPath, originalInfo);
+  return desiredOutputPath;
+}
+
 // Multer for file uploads
 const upload = multer({
   dest: UPLOAD_DIR,
@@ -916,12 +1179,11 @@ ${fileContext}`;
 
 // Process questionnaire with Claude API (existing endpoint)
 app.post('/api/process', aiLimiter, async (req, res) => {
-  const { filePath: rawFilePath, sheetName, questionColumn, idColumn, product, apiKey } = req.body;
+  const { filePath: rawFilePath, fileType, sheetName, questionColumn, idColumn, product, apiKey } = req.body;
 
   if (!apiKey) return res.status(400).json({ error: 'Anthropic API key required' });
   if (!rawFilePath) return res.status(400).json({ error: 'No file specified' });
 
-  // Security: ensure filePath is within the uploads directory
   let filePath;
   try { filePath = assertPathWithin(rawFilePath, UPLOAD_DIR); }
   catch { return res.status(403).json({ error: 'Invalid file path' }); }
@@ -930,26 +1192,91 @@ app.post('/api/process', aiLimiter, async (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
 
-  const sendEvent = (type, data) => {
-    res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`);
-  };
+  const sendEvent = (type, data) => { res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`); };
 
   try {
+    const ext = (fileType || '.xlsx').toLowerCase();
     sendEvent('progress', { step: 'Reading questionnaire...', percent: 5 });
-    const workbook = XLSX.readFile(filePath);
-    const sheet = workbook.Sheets[sheetName || workbook.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
 
-    sendEvent('progress', { step: 'Loading answer bank...', percent: 15 });
+    // --- Extract questions based on file type ---
+    let questions = [];
+    let workbook = null;
+
+    if (ext === '.xlsx' || ext === '.xls') {
+      workbook = XLSX.readFile(filePath);
+      const sheet = workbook.Sheets[sheetName || workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      questions = rows.map((row, idx) => ({
+        index: idx,
+        id: idColumn ? row[idColumn] : `Q${idx + 1}`,
+        question: questionColumn ? row[questionColumn] : Object.values(row)[1] || '',
+        originalData: row
+      })).filter(q => String(q.question).trim().length > 0);
+
+    } else if (ext === '.csv') {
+      const rawCsv = fs.readFileSync(filePath, 'utf-8');
+      workbook = XLSX.read(rawCsv, { type: 'string' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      if (rows.length > 0) {
+        const cols = Object.keys(rows[0]);
+        const qCol = questionColumn || cols.find(c => /question|requirement|control|description/i.test(c)) || cols[1] || cols[0];
+        const idCol = idColumn || cols.find(c => /^(id|#|ref|number|no\.?|section)\b/i.test(c)) || cols[0];
+        questions = rows.map((row, idx) => ({
+          index: idx,
+          id: row[idCol] ? String(row[idCol]) : `Q${idx + 1}`,
+          question: String(row[qCol] || '').trim(),
+          originalData: row
+        })).filter(q => q.question.length > 0);
+      }
+
+    } else if (ext === '.docx') {
+      questions = extractQuestionsFromDocxFile(filePath);
+      if (questions.length === 0) {
+        // Fallback: extract text and use Claude to find questions
+        sendEvent('progress', { step: 'Extracting text from document...', percent: 8 });
+        const AdmZip = require('adm-zip');
+        const zip = new AdmZip(filePath);
+        const xmlContent = zip.readAsText('word/document.xml');
+        const text = xmlContent.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        sendEvent('progress', { step: 'Identifying questions...', percent: 12 });
+        questions = await extractQuestionsFromText(apiKey, text, product);
+      }
+
+    } else if (ext === '.pdf') {
+      sendEvent('progress', { step: 'Extracting text from PDF...', percent: 8 });
+      const pdfParse = require('pdf-parse');
+      const buffer = fs.readFileSync(filePath);
+      const pdfData = await pdfParse(buffer);
+      sendEvent('progress', { step: 'Identifying questions...', percent: 12 });
+      questions = await extractQuestionsFromText(apiKey, pdfData.text, product);
+
+    } else {
+      // txt, md, json, html, xml, pptx, rtf, etc. — extract text then use Claude
+      let text = '';
+      if (ext === '.pptx') {
+        const AdmZip = require('adm-zip');
+        const zip = new AdmZip(filePath);
+        const entries = zip.getEntries().filter(e => /^ppt\/slides\/slide\d+\.xml$/i.test(e.entryName));
+        text = entries.map(e => e.getData().toString('utf-8').replace(/<[^>]+>/g, ' ')).join(' ');
+      } else if (ext === '.json') {
+        const raw = fs.readFileSync(filePath, 'utf-8');
+        try { text = JSON.stringify(JSON.parse(raw), null, 2); } catch { text = raw; }
+      } else {
+        text = fs.readFileSync(filePath, 'utf-8');
+        if (ext === '.html' || ext === '.htm' || ext === '.xml') text = text.replace(/<[^>]+>/g, ' ');
+      }
+      sendEvent('progress', { step: 'Identifying questions...', percent: 12 });
+      questions = await extractQuestionsFromText(apiKey, text, product);
+    }
+
+    if (questions.length === 0) {
+      sendEvent('error', { message: 'No questions found in the file. Check the format or column selection.' });
+      res.end(); return;
+    }
+
+    sendEvent('progress', { step: `Found ${questions.length} questions — loading answer bank...`, percent: 15 });
     const knowledgeBase = await loadKnowledgeBase(product);
-
-    const questions = rows.map((row, idx) => ({
-      index: idx,
-      id: idColumn ? row[idColumn] : `Q${idx + 1}`,
-      question: questionColumn ? row[questionColumn] : Object.values(row)[1] || '',
-      originalData: row
-    })).filter(q => q.question.trim().length > 0);
-
     sendEvent('progress', { step: `Found ${questions.length} questions`, percent: 20 });
 
     const batchSize = 10;
@@ -960,15 +1287,12 @@ app.post('/api/process', aiLimiter, async (req, res) => {
       const batchNum = Math.floor(i / batchSize) + 1;
       const batch = questions.slice(i, i + batchSize);
       const percent = 20 + Math.round((batchNum / totalBatches) * 65);
-
       sendEvent('progress', {
         step: `Processing batch ${batchNum}/${totalBatches} (questions ${i + 1}-${Math.min(i + batchSize, questions.length)})...`,
         percent
       });
-
       const answers = await callClaudeAPI(apiKey, batch, knowledgeBase, product);
       allAnswers.push(...answers);
-
       sendEvent('batch_complete', { batchNum, totalBatches, answers });
     }
 
@@ -1007,15 +1331,21 @@ app.post('/api/process', aiLimiter, async (req, res) => {
 
     sendEvent('progress', { step: 'Writing output file...', percent: 90 });
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const outputName = `completed-questionnaire-${timestamp}.xlsx`;
+    // Determine output extension: preserve original for writable formats, fallback to xlsx
+    const writableExts = ['.xlsx', '.xls', '.csv', '.docx'];
+    const outputExt = writableExts.includes(ext) ? (ext === '.xls' ? '.xlsx' : ext) : '.xlsx';
+    const outputName = `completed-questionnaire-${timestamp}${outputExt}`;
     const outputPath = path.join(OUTPUT_DIR, outputName);
-    writeOutputExcel(allAnswers, outputPath, {
+
+    const originalInfo = {
       originalFilePath: filePath,
-      sheetName: sheetName || workbook.SheetNames[0],
+      sheetName: workbook ? (sheetName || workbook.SheetNames[0]) : null,
       questionColumn,
       idColumn,
       questions
-    });
+    };
+    const actualOutputPath = writeOutputFile(allAnswers, outputPath, originalInfo, ext);
+    const actualOutputName = path.basename(actualOutputPath);
 
     // Collect flags for data quality summary
     const flagged = allAnswers.filter(a => a.flags && a.flags.length > 0);
@@ -1029,7 +1359,7 @@ app.post('/api/process', aiLimiter, async (req, res) => {
     }
 
     sendEvent('complete', {
-      outputFile: outputName,
+      outputFile: actualOutputName,
       totalQuestions: questions.length,
       highConfidence: allAnswers.filter(a => a.confidence === 'high').length,
       mediumConfidence: allAnswers.filter(a => a.confidence === 'medium').length,
@@ -2755,9 +3085,12 @@ function writeOutputExcel(answers, outputPath, originalInfo) {
 
       // Read header row to find columns
       const headers = {};
+      const headerNames = [];
       for (let c = range.s.c; c <= range.e.c; c++) {
         const cell = ws[XLSX.utils.encode_cell({ r: range.s.r, c })];
-        if (cell && cell.v != null) headers[String(cell.v).trim()] = c;
+        const name = (cell && cell.v != null) ? String(cell.v).trim() : '';
+        headers[name] = c;
+        headerNames.push(name);
       }
 
       // Find the question and ID columns by index
@@ -2766,15 +3099,43 @@ function writeOutputExcel(answers, outputPath, originalInfo) {
       const qColIdx = qColName ? headers[qColName] : undefined;
       const idColIdx = idColName ? headers[idColName] : undefined;
 
-      // Always append new columns for AI output (never overwrite original data)
+      // Find existing answer/response column to write AI answers INTO it
+      const ansColPattern = /^(answer|response|reply|vendor.?response|assessment.?response|vendor.?answer|institution.?response)/i;
+      let existingAnsColIdx = null;
+      for (const [name, colIdx] of Object.entries(headers)) {
+        if (name && ansColPattern.test(name)) {
+          existingAnsColIdx = colIdx;
+          break;
+        }
+      }
+      // Broader fallback: any header containing answer/response
+      if (existingAnsColIdx == null) {
+        for (const [name, colIdx] of Object.entries(headers)) {
+          if (name && /answer|response/i.test(name) && colIdx !== qColIdx && colIdx !== idColIdx) {
+            existingAnsColIdx = colIdx;
+            break;
+          }
+        }
+      }
+
+      // Append only Source, Confidence, Flags as new columns (answer goes in existing column)
       const lastCol = range.e.c;
-      const aiAnsColIdx = lastCol + 1;
-      const aiSourceColIdx = lastCol + 2;
-      const aiConfColIdx = lastCol + 3;
-      const aiFlagsColIdx = lastCol + 4;
+      let nextNewCol = lastCol + 1;
+
+      // If no existing answer column found, also append AI Answer column
+      let aiAnsColIdx;
+      if (existingAnsColIdx != null) {
+        aiAnsColIdx = existingAnsColIdx; // Write into existing Response column
+      } else {
+        aiAnsColIdx = nextNewCol++;
+        ws[XLSX.utils.encode_cell({ r: range.s.r, c: aiAnsColIdx })] = { t: 's', v: 'AI Answer' };
+      }
+
+      const aiSourceColIdx = nextNewCol++;
+      const aiConfColIdx = nextNewCol++;
+      const aiFlagsColIdx = nextNewCol++;
 
       // Write header labels for new columns
-      ws[XLSX.utils.encode_cell({ r: range.s.r, c: aiAnsColIdx })] = { t: 's', v: 'AI Answer' };
       ws[XLSX.utils.encode_cell({ r: range.s.r, c: aiSourceColIdx })] = { t: 's', v: 'Source' };
       ws[XLSX.utils.encode_cell({ r: range.s.r, c: aiConfColIdx })] = { t: 's', v: 'Confidence' };
       ws[XLSX.utils.encode_cell({ r: range.s.r, c: aiFlagsColIdx })] = { t: 's', v: 'Flags' };
@@ -2816,7 +3177,7 @@ function writeOutputExcel(answers, outputPath, originalInfo) {
         dataRowIdx++;
 
         if (match) {
-          // Write answer into the cell
+          // Write answer into existing Response column (or new AI Answer column)
           ws[XLSX.utils.encode_cell({ r, c: aiAnsColIdx })] = { t: 's', v: match.answer || '' };
           ws[XLSX.utils.encode_cell({ r, c: aiSourceColIdx })] = { t: 's', v: match.source || '' };
           ws[XLSX.utils.encode_cell({ r, c: aiConfColIdx })] = { t: 's', v: match.confidence || 'low' };
@@ -2834,10 +3195,16 @@ function writeOutputExcel(answers, outputPath, originalInfo) {
       // Set column widths for new columns
       if (!ws['!cols']) ws['!cols'] = [];
       while (ws['!cols'].length <= newLastCol) ws['!cols'].push({ wch: 15 });
-      ws['!cols'][aiAnsColIdx] = { wch: 80 };
+      if (existingAnsColIdx != null) {
+        ws['!cols'][existingAnsColIdx] = { wch: 80 }; // Widen existing response column
+      } else {
+        ws['!cols'][aiAnsColIdx] = { wch: 80 };
+      }
       ws['!cols'][aiSourceColIdx] = { wch: 30 };
       ws['!cols'][aiConfColIdx] = { wch: 12 };
       ws['!cols'][aiFlagsColIdx] = { wch: 25 };
+
+      console.log(`Excel export: Answer column = ${existingAnsColIdx != null ? `existing col ${existingAnsColIdx} ("${headerNames[existingAnsColIdx]}")` : 'new appended column'}, matched ${answers.length} answers`);
 
       // Write back — the original file was already copied, so all other sheets/formatting are intact
       XLSX.writeFile(wb, outputPath);
