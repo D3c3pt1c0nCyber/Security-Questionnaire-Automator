@@ -56,7 +56,7 @@ const upload = multer({
 
 // Allow inline scripts/styles (single-file app)
 app.use((req, res, next) => {
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://api.anthropic.com; font-src 'self'");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data:; connect-src 'self' https://api.anthropic.com; font-src 'self' https://fonts.gstatic.com");
   next();
 });
 app.use(express.static(path.join(__dirname, 'public')));
