@@ -2766,36 +2766,31 @@ function writeOutputExcel(answers, outputPath, originalInfo) {
       const qColIdx = qColName ? headers[qColName] : undefined;
       const idColIdx = idColName ? headers[idColName] : undefined;
 
-      // Find existing answer/response column
-      const ansColEntry = Object.entries(headers).find(([name]) =>
-        /^(answer|response|reply|vendor.?response|assessment)/i.test(name)
-      );
-      const existingAnsColIdx = ansColEntry ? ansColEntry[1] : null;
-
-      // Determine where to write AI answers: use existing answer column, or append new columns after last
+      // Always append new columns for AI output (never overwrite original data)
       const lastCol = range.e.c;
-      const aiAnsColIdx = existingAnsColIdx != null ? existingAnsColIdx : lastCol + 1;
-      const aiSourceColIdx = lastCol + (existingAnsColIdx != null ? 1 : 2);
-      const aiConfColIdx = lastCol + (existingAnsColIdx != null ? 2 : 3);
-      const aiFlagsColIdx = lastCol + (existingAnsColIdx != null ? 3 : 4);
+      const aiAnsColIdx = lastCol + 1;
+      const aiSourceColIdx = lastCol + 2;
+      const aiConfColIdx = lastCol + 3;
+      const aiFlagsColIdx = lastCol + 4;
 
-      // Write header labels for new columns (only if we're appending)
-      if (existingAnsColIdx == null) {
-        ws[XLSX.utils.encode_cell({ r: range.s.r, c: aiAnsColIdx })] = { t: 's', v: 'AI Answer' };
-      }
+      // Write header labels for new columns
+      ws[XLSX.utils.encode_cell({ r: range.s.r, c: aiAnsColIdx })] = { t: 's', v: 'AI Answer' };
       ws[XLSX.utils.encode_cell({ r: range.s.r, c: aiSourceColIdx })] = { t: 's', v: 'Source' };
       ws[XLSX.utils.encode_cell({ r: range.s.r, c: aiConfColIdx })] = { t: 's', v: 'Confidence' };
       ws[XLSX.utils.encode_cell({ r: range.s.r, c: aiFlagsColIdx })] = { t: 's', v: 'Flags' };
 
-      // Build answer lookup by ID and by question text
+      // Build answer lookup by ID, question text, and row index
       const answerByID = {};
       const answerByQ = {};
+      const answerByIdx = {};
       for (const a of answers) {
         if (a.id) answerByID[String(a.id).trim()] = a;
         if (a.question) answerByQ[a.question.trim().toLowerCase()] = a;
+        if (a.index != null) answerByIdx[a.index] = a;
       }
 
       // Write answers into cells row by row
+      let dataRowIdx = 0;
       for (let r = range.s.r + 1; r <= range.e.r; r++) {
         // Get row ID
         let rowId = '';
@@ -2811,9 +2806,14 @@ function writeOutputExcel(answers, outputPath, originalInfo) {
           if (qCell && qCell.v != null) rowQ = String(qCell.v).trim();
         }
 
-        // Match answer
+        // Skip empty rows
+        if (!rowQ && !rowId) { dataRowIdx++; continue; }
+
+        // Match answer by ID first, then by question text, then by row index
         let match = answerByID[rowId];
         if (!match && rowQ) match = answerByQ[rowQ.toLowerCase()];
+        if (!match) match = answerByIdx[dataRowIdx];
+        dataRowIdx++;
 
         if (match) {
           // Write answer into the cell
