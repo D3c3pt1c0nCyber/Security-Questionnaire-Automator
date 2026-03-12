@@ -11,6 +11,11 @@ n8n-workflows/dashboard/uploads/
 n8n-workflows/dashboard/node_modules/
 n8n-workflows/output/
 
+# App
+app/uploads/
+data/output/
+data/answer-bank/
+
 # n8n
 .n8n/
 

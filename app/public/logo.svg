@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <defs>
+    <linearGradient id="g1" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#0a4a8a"/>
+      <stop offset="50%" style="stop-color:#1a8fd4"/>
+      <stop offset="75%" style="stop-color:#2ec4a0"/>
+      <stop offset="100%" style="stop-color:#7ed321"/>
+    </linearGradient>
+  </defs>
+  <!-- Bottom-left pieces -->
+  <rect x="15" y="140" width="22" height="22" rx="5" fill="#0a4a8a" transform="rotate(-30 26 151)"/>
+  <rect x="42" y="125" width="22" height="22" rx="5" fill="#0d5a9e" transform="rotate(-30 53 136)"/>
+  <!-- Middle pieces -->
+  <rect x="55" y="98" width="28" height="28" rx="6" fill="#1070b8" transform="rotate(-30 69 112)"/>
+  <rect x="78" y="108" width="28" height="28" rx="6" fill="#1580c8" transform="rotate(-30 92 122)"/>
+  <!-- Upper-middle pieces -->
+  <rect x="95" y="72" width="32" height="32" rx="6" fill="#1a90d4" transform="rotate(-30 111 88)"/>
+  <rect x="118" y="80" width="32" height="32" rx="6" fill="#20a0d8" transform="rotate(-30 134 96)"/>
+  <!-- Top pieces -->
+  <rect x="135" y="42" width="28" height="28" rx="5" fill="#30c4b0" transform="rotate(-30 149 56)"/>
+  <rect x="155" y="22" width="24" height="24" rx="4" fill="#7ed321" transform="rotate(-30 167 34)"/>
+</svg>

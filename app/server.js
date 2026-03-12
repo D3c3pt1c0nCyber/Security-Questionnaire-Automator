@@ -9,51 +9,9 @@ const https = require('https');
 const app = express();
 const PORT = process.env.PORT || 3456;
 
-// AI Provider Models
-const AI_MODELS = {
-  claude: {
-    name: 'Claude (Anthropic)',
-    models: ['claude-opus-4-20250514', 'claude-sonnet-4-20250514', 'claude-haiku-4-5-20251001'],
-    default: 'claude-opus-4-20250514'
-  },
-  openai: {
-    name: 'OpenAI',
-    models: ['gpt-4-turbo', 'gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo'],
-    default: 'gpt-4o'
-  },
-  gemini: {
-    name: 'Google Gemini',
-    models: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
-    default: 'gemini-2.0-flash'
-  },
-  cohere: {
-    name: 'Cohere',
-    models: ['command-r-plus', 'command-r', 'command-light'],
-    default: 'command-r-plus'
-  },
-  huggingface: {
-    name: 'HuggingFace',
-    models: ['meta-llama/Llama-2-70b-chat-hf', 'mistralai/Mistral-7B-Instruct-v0.1'],
-    default: 'meta-llama/Llama-2-70b-chat-hf'
-  }
-};
-
-// AI Provider Config Storage (in-memory)
-const aiProviderConfigs = {};
-
-function detectAIProvider(apiKey) {
-  if (!apiKey) return null;
-  if (apiKey.startsWith('sk-ant-')) return 'claude';
-  if (apiKey.startsWith('sk-')) return 'openai';
-  if (apiKey.startsWith('AIza')) return 'gemini';
-  if (apiKey.match(/^[a-z0-9]{40}$/)) return 'cohere'; // Cohere API key pattern
-  if (apiKey.startsWith('hf_')) return 'huggingface';
-  return null;
-}
-
 // Config
-const BANK_ROOT = path.resolve(__dirname, '..', '..', 'security-questionnaire-bank');
-const OUTPUT_DIR = path.resolve(__dirname, '..', 'output');
+const BANK_ROOT = path.resolve(__dirname, '..', 'data', 'answer-bank');
+const OUTPUT_DIR = path.resolve(__dirname, '..', 'data', 'output');
 const UPLOAD_DIR = path.resolve(__dirname, 'uploads');
 
 // Atlassian Config (from .env)
@@ -63,6 +21,7 @@ let ATLASSIAN_TOKEN = process.env.ATLASSIAN_TOKEN || '';
 let ATLASSIAN_AUTH = (ATLASSIAN_EMAIL && ATLASSIAN_TOKEN)
   ? Buffer.from(`${ATLASSIAN_EMAIL}:${ATLASSIAN_TOKEN}`).toString('base64')
   : '';
+let JIRA_PROJECT = process.env.JIRA_PROJECT || 'ISC';
 
 // Ensure dirs exist
 [OUTPUT_DIR, UPLOAD_DIR].forEach(dir => {
@@ -91,54 +50,212 @@ app.use(express.json({ limit: '50mb' }));
 
 // --- API Routes ---
 
+// Unified Atlassian Authentication (Confluence + Jira)
+app.post('/api/atlassian/auth', (req, res) => {
+  const { base, email, token, project } = req.body;
+  if (!base || !email || !token) {
+    return res.status(400).json({ error: 'Instance URL, email, and API token are required' });
+  }
+
+  const cleanBase = base.replace(/\/wiki\/?$/, '').replace(/\/+$/, '');
+  const testAuth = Buffer.from(`${email}:${token}`).toString('base64');
+
+  // Test both Confluence and Jira in parallel
+  let confluenceOk = false, jiraOk = false, confMsg = '', jiraMsg = '';
+  let done = 0;
+
+  function finish() {
+    done++;
+    if (done < 2) return;
+    if (!confluenceOk && !jiraOk) {
+      return res.status(401).json({ error: 'Authentication failed for both Confluence and Jira. Check your credentials.' });
+    }
+    setAtlassianCredentials(cleanBase, email, token);
+    if (project) JIRA_PROJECT = project.toUpperCase();
+    const parts = [];
+    if (confluenceOk) parts.push('Confluence');
+    if (jiraOk) parts.push('Jira');
+    res.json({ success: true, message: `Connected to ${parts.join(' & ')}`, confluence: confluenceOk, jira: jiraOk, project: JIRA_PROJECT });
+  }
+
+  // Test Confluence
+  const confReq = https.request({
+    hostname: new URL(cleanBase).hostname,
+    path: '/wiki/rest/api/space?limit=1',
+    method: 'GET',
+    headers: { 'Authorization': `Basic ${testAuth}`, 'Accept': 'application/json' }
+  }, (r) => {
+    r.on('data', () => {});
+    r.on('end', () => { confluenceOk = r.statusCode === 200; confMsg = r.statusCode === 200 ? 'OK' : `Status ${r.statusCode}`; finish(); });
+  });
+  confReq.on('error', () => { confMsg = 'Connection failed'; finish(); });
+  confReq.end();
+
+  // Test Jira
+  const jiraReq = https.request({
+    hostname: new URL(cleanBase).hostname,
+    path: '/rest/api/3/myself',
+    method: 'GET',
+    headers: { 'Authorization': `Basic ${testAuth}`, 'Content-Type': 'application/json' }
+  }, (r) => {
+    r.on('data', () => {});
+    r.on('end', () => { jiraOk = r.statusCode === 200; jiraMsg = r.statusCode === 200 ? 'OK' : `Status ${r.statusCode}`; finish(); });
+  });
+  jiraReq.on('error', () => { jiraMsg = 'Connection failed'; finish(); });
+  jiraReq.end();
+});
+
+// Get/set project key
+app.get('/api/atlassian/project', (req, res) => {
+  res.json({ project: JIRA_PROJECT });
+});
+
+app.post('/api/atlassian/project', (req, res) => {
+  const { project } = req.body;
+  if (!project) return res.status(400).json({ error: 'Project key is required' });
+  JIRA_PROJECT = project.toUpperCase();
+  res.json({ success: true, project: JIRA_PROJECT });
+});
+
+// Test Claude API key
+app.post('/api/test-api-key', (req, res) => {
+  const { apiKey } = req.body;
+  if (!apiKey) return res.status(400).json({ error: 'API key is required' });
+
+  const body = JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 1, messages: [{ role: 'user', content: 'hi' }] });
+  const options = {
+    hostname: 'api.anthropic.com', path: '/v1/messages', method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'Content-Length': Buffer.byteLength(body) }
+  };
+
+  const apiReq = https.request(options, (apiRes) => {
+    let data = '';
+    apiRes.on('data', chunk => { data += chunk; });
+    apiRes.on('end', () => {
+      if (apiRes.statusCode === 200) {
+        try { const d = JSON.parse(data); res.json({ success: true, model: d.model || 'Claude' }); }
+        catch { res.json({ success: true, model: 'Claude' }); }
+      } else {
+        let errMsg = `API returned status ${apiRes.statusCode}`;
+        try { const d = JSON.parse(data); errMsg = d.error?.message || errMsg; } catch {}
+        res.status(apiRes.statusCode).json({ error: errMsg });
+      }
+    });
+  });
+  apiReq.on('error', (err) => res.status(500).json({ error: err.message }));
+  apiReq.setTimeout(10000, () => { apiReq.destroy(); res.status(504).json({ error: 'Connection timed out' }); });
+  apiReq.write(body);
+  apiReq.end();
+});
+
 // Get available products
 app.get('/api/products', (req, res) => {
   const productsDir = path.join(BANK_ROOT, 'products');
   try {
     const entries = fs.readdirSync(productsDir, { withFileTypes: true });
     const products = entries
-      .filter(e => e.isDirectory() && !e.name.startsWith('TEMPLATE'))
-      .map(e => e.name);
+      .filter(e => e.isDirectory() && !e.name.startsWith('TEMPLATE') && !e.name.startsWith('_archived_'))
+      .map(e => e.name)
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
     res.json(products);
   } catch {
     res.json([]);
   }
 });
 
-// Jira Authentication & Configuration
-app.post('/api/jira/auth', (req, res) => {
-  const { base, email, token } = req.body;
-  if (!base || !email || !token) {
-    return res.status(400).json({ error: 'Missing Jira credentials (base, email, token required)' });
+// Add a product
+app.post('/api/products', (req, res) => {
+  const { name } = req.body;
+  if (!name || !name.trim()) return res.json({ success: false, error: 'Product name is required' });
+  const safeName = name.trim().replace(/[<>:"/\\|?*]/g, '');
+  if (!safeName) return res.json({ success: false, error: 'Invalid product name' });
+  const prodDir = path.join(BANK_ROOT, 'products', safeName);
+  if (fs.existsSync(prodDir)) return res.json({ success: false, error: 'Product already exists' });
+  try {
+    fs.mkdirSync(prodDir, { recursive: true });
+    fs.mkdirSync(path.join(prodDir, 'questionnaires'), { recursive: true });
+    fs.mkdirSync(path.join(prodDir, 'overrides'), { recursive: true });
+    res.json({ success: true, name: safeName });
+  } catch (e) {
+    res.json({ success: false, error: e.message });
   }
+});
 
-  // Validate by testing the connection
-  const testAuth = Buffer.from(`${email}:${token}`).toString('base64');
-  const testOptions = {
-    hostname: new URL(base).hostname,
-    path: '/rest/api/3/myself',
-    method: 'GET',
-    headers: {
-      'Authorization': `Basic ${testAuth}`,
-      'Content-Type': 'application/json'
-    }
-  };
+// Remove a product (directory only, preserves files by renaming)
+app.delete('/api/products/:name', (req, res) => {
+  const name = req.params.name;
+  const prodDir = path.join(BANK_ROOT, 'products', name);
+  if (!fs.existsSync(prodDir)) return res.json({ success: false, error: 'Product not found' });
+  try {
+    const archiveDir = path.join(BANK_ROOT, 'products', `_archived_${name}_${Date.now()}`);
+    fs.renameSync(prodDir, archiveDir);
+    res.json({ success: true });
+  } catch (e) {
+    res.json({ success: false, error: e.message });
+  }
+});
 
-  const testReq = https.request(testOptions, (testRes) => {
-    if (testRes.statusCode === 200) {
-      setAtlassianCredentials(base, email, token);
-      res.json({ success: true, message: 'Jira credentials authenticated successfully' });
-    } else if (testRes.statusCode === 401) {
-      res.status(401).json({ error: 'Invalid email or API token' });
-    } else {
-      res.status(400).json({ error: `Jira server responded with status ${testRes.statusCode}` });
-    }
-  });
+// Add a framework
+app.post('/api/frameworks', (req, res) => {
+  const { name } = req.body;
+  if (!name || !name.trim()) return res.json({ success: false, error: 'Framework name is required' });
+  const safeName = name.trim().replace(/[<>:"/\\|?*]/g, '');
+  if (!safeName) return res.json({ success: false, error: 'Invalid framework name' });
+  const fwDir = path.join(BANK_ROOT, 'frameworks', safeName);
+  if (fs.existsSync(fwDir)) return res.json({ success: false, error: 'Framework already exists' });
+  try {
+    fs.mkdirSync(fwDir, { recursive: true });
+    res.json({ success: true, name: safeName });
+  } catch (e) {
+    res.json({ success: false, error: e.message });
+  }
+});
 
-  testReq.on('error', (err) => {
-    res.status(400).json({ error: `Failed to connect to Jira: ${err.message}` });
-  });
-  testReq.end();
+// Remove a framework
+app.delete('/api/frameworks/:name', (req, res) => {
+  const name = req.params.name;
+  const fwDir = path.join(BANK_ROOT, 'frameworks', name);
+  if (!fs.existsSync(fwDir)) return res.json({ success: false, error: 'Framework not found' });
+  try {
+    const archiveDir = path.join(BANK_ROOT, 'frameworks', `_archived_${name}_${Date.now()}`);
+    fs.renameSync(fwDir, archiveDir);
+    res.json({ success: true });
+  } catch (e) {
+    res.json({ success: false, error: e.message });
+  }
+});
+
+// Add a version to a framework
+app.post('/api/frameworks/:name/versions', (req, res) => {
+  const name = req.params.name;
+  const { version } = req.body;
+  if (!version || !version.trim()) return res.json({ success: false, error: 'Version name is required' });
+  const safeVer = version.trim().replace(/[<>:"/\\|?*]/g, '');
+  const fwDir = path.join(BANK_ROOT, 'frameworks', name);
+  if (!fs.existsSync(fwDir)) return res.json({ success: false, error: 'Framework not found' });
+  const verDir = path.join(fwDir, safeVer);
+  if (fs.existsSync(verDir)) return res.json({ success: false, error: 'Version already exists' });
+  try {
+    fs.mkdirSync(verDir, { recursive: true });
+    fs.mkdirSync(path.join(verDir, 'completed'), { recursive: true });
+    res.json({ success: true, version: safeVer });
+  } catch (e) {
+    res.json({ success: false, error: e.message });
+  }
+});
+
+// Remove a version from a framework
+app.delete('/api/frameworks/:name/versions/:version', (req, res) => {
+  const { name, version } = req.params;
+  const verDir = path.join(BANK_ROOT, 'frameworks', name, version);
+  if (!fs.existsSync(verDir)) return res.json({ success: false, error: 'Version not found' });
+  try {
+    const archiveDir = path.join(BANK_ROOT, 'frameworks', name, `_archived_${version}_${Date.now()}`);
+    fs.renameSync(verDir, archiveDir);
+    res.json({ success: true });
+  } catch (e) {
+    res.json({ success: false, error: e.message });
+  }
 });
 
 // Get current Jira configuration status
@@ -148,6 +265,95 @@ app.get('/api/jira/status', (req, res) => {
     base: ATLASSIAN_BASE ? ATLASSIAN_BASE.split('//')[1] || ATLASSIAN_BASE : 'Not configured',
     email: ATLASSIAN_EMAIL ? '***@***' : 'Not configured'
   });
+});
+
+// Get current Confluence configuration status
+app.get('/api/confluence/status', (req, res) => {
+  res.json({
+    configured: !!(ATLASSIAN_BASE && ATLASSIAN_EMAIL && ATLASSIAN_TOKEN),
+    baseUrl: ATLASSIAN_BASE ? `${ATLASSIAN_BASE}/wiki` : 'Not configured',
+    email: ATLASSIAN_EMAIL || 'Not configured',
+    enabledConfluence: !!(ATLASSIAN_BASE && ATLASSIAN_EMAIL && ATLASSIAN_TOKEN)
+  });
+});
+
+// Test Confluence connection
+app.post('/api/confluence/test', (req, res) => {
+  if (!ATLASSIAN_BASE || !ATLASSIAN_AUTH) {
+    return res.status(400).json({ error: 'Confluence not configured' });
+  }
+
+  const options = {
+    hostname: new URL(ATLASSIAN_BASE).hostname,
+    path: '/wiki/rest/api/space?limit=5',
+    method: 'GET',
+    headers: {
+      'Authorization': `Basic ${ATLASSIAN_AUTH}`,
+      'Accept': 'application/json'
+    }
+  };
+
+  const testReq = https.request(options, (testRes) => {
+    let data = '';
+    testRes.on('data', chunk => { data += chunk; });
+    testRes.on('end', () => {
+      if (testRes.statusCode === 200) {
+        try {
+          const parsed = JSON.parse(data);
+          const spaces = (parsed.results || []).map(s => s.name);
+          res.json({ success: true, message: `Connected! Found ${spaces.length} spaces`, spaces });
+        } catch {
+          res.json({ success: true, message: 'Connected to Confluence' });
+        }
+      } else {
+        res.status(testRes.statusCode).json({ error: `Confluence returned status ${testRes.statusCode}` });
+      }
+    });
+  });
+
+  testReq.on('error', (err) => {
+    res.status(400).json({ error: `Connection failed: ${err.message}` });
+  });
+  testReq.end();
+});
+
+// Test Jira connection
+app.post('/api/jira/test', (req, res) => {
+  if (!ATLASSIAN_BASE || !ATLASSIAN_AUTH) {
+    return res.status(400).json({ error: 'Jira not configured' });
+  }
+
+  const options = {
+    hostname: new URL(ATLASSIAN_BASE).hostname,
+    path: '/rest/api/3/myself',
+    method: 'GET',
+    headers: {
+      'Authorization': `Basic ${ATLASSIAN_AUTH}`,
+      'Content-Type': 'application/json'
+    }
+  };
+
+  const testReq = https.request(options, (testRes) => {
+    let data = '';
+    testRes.on('data', chunk => { data += chunk; });
+    testRes.on('end', () => {
+      if (testRes.statusCode === 200) {
+        try {
+          const user = JSON.parse(data);
+          res.json({ success: true, message: `Connected as ${user.displayName || user.emailAddress}` });
+        } catch {
+          res.json({ success: true, message: 'Connected to Jira' });
+        }
+      } else {
+        res.status(testRes.statusCode).json({ error: `Jira returned status ${testRes.statusCode}` });
+      }
+    });
+  });
+
+  testReq.on('error', (err) => {
+    res.status(400).json({ error: `Connection failed: ${err.message}` });
+  });
+  testReq.end();
 });
 
 // Get available frameworks
@@ -211,7 +417,7 @@ async function parseUploadedFile(filePath, originalName) {
         const zip = new AdmZip(filePath);
         const content = zip.readAsText('word/document.xml');
         const text = content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-        return { type: 'document', text, preview: text.substring(0, 1000) };
+        return { type: 'document', text: text.substring(0, 30000), preview: text.substring(0, 1000) };
       } catch {
         return { type: 'document', text: '', preview: '', error: 'Could not parse .docx file' };
       }
@@ -222,6 +428,37 @@ async function parseUploadedFile(filePath, originalName) {
       const parsed = JSON.parse(raw);
       const text = JSON.stringify(parsed, null, 2);
       return { type: 'document', text, preview: text.substring(0, 1000), json: parsed };
+    }
+
+    case '.pptx': {
+      const AdmZip = require('adm-zip');
+      try {
+        const zip = new AdmZip(filePath);
+        const entries = zip.getEntries().filter(e => /^ppt\/slides\/slide\d+\.xml$/i.test(e.entryName));
+        entries.sort((a, b) => a.entryName.localeCompare(b.entryName, undefined, { numeric: true }));
+        const text = entries.map((e, i) => {
+          const xml = e.getData().toString('utf-8');
+          const clean = xml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+          return `[Slide ${i + 1}] ${clean}`;
+        }).join('\n\n');
+        return { type: 'document', text: text.substring(0, 30000), preview: text.substring(0, 1000), slideCount: entries.length };
+      } catch {
+        return { type: 'document', text: '', preview: '', error: 'Could not parse .pptx file' };
+      }
+    }
+
+    case '.html':
+    case '.htm':
+    case '.xml': {
+      const raw = fs.readFileSync(filePath, 'utf-8');
+      const text = raw.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      return { type: 'document', text: text.substring(0, 30000), preview: text.substring(0, 1000) };
+    }
+
+    case '.rtf': {
+      const raw = fs.readFileSync(filePath, 'utf-8');
+      const text = raw.replace(/\{\\[^{}]*\}/g, '').replace(/\\[a-z]+\d*\s?/gi, '').replace(/[{}]/g, '').replace(/\s+/g, ' ').trim();
+      return { type: 'document', text: text.substring(0, 30000), preview: text.substring(0, 1000) };
     }
 
     case '.txt':
@@ -280,7 +517,7 @@ app.post('/api/upload-multi', upload.array('files', 10), async (req, res) => {
 
 // --- Chat endpoint ---
 app.post('/api/chat', async (req, res) => {
-  const { messages, apiKey, model, product, attachedFiles } = req.body;
+  const { messages, apiKey, model, product, attachedFiles, searchConfluence: doConfluence = true, searchJira: doJira = true } = req.body;
 
   if (!apiKey) return res.status(400).json({ error: 'Anthropic API key required' });
 
@@ -290,7 +527,7 @@ app.post('/api/chat', async (req, res) => {
   res.setHeader('Connection', 'keep-alive');
 
   try {
-    const knowledgeBase = loadKnowledgeBase(product);
+    const knowledgeBase = await loadKnowledgeBase(product);
 
     // Build file context from attached files
     let fileContext = '';
@@ -315,13 +552,20 @@ app.post('/api/chat', async (req, res) => {
     // Extract the latest user message for Confluence/Jira search
     const latestMsg = messages[messages.length - 1]?.content || '';
 
-    // Search Confluence and Jira in parallel based on user's question
-    res.write(`data: ${JSON.stringify({ type: 'status', message: 'Searching Confluence & Jira...' })}\n\n`);
+    // Search Confluence and Jira in parallel based on user's question and settings
+    const searchParts = [];
+    if (doConfluence) searchParts.push('Confluence');
+    if (doJira) searchParts.push('Jira');
+    if (searchParts.length > 0) {
+      res.write(`data: ${JSON.stringify({ type: 'status', message: `Searching ${searchParts.join(' & ')}...` })}\n\n`);
+    } else {
+      res.write(`data: ${JSON.stringify({ type: 'status', message: 'Searching local answer bank...' })}\n\n`);
+    }
 
     const [confluenceResults, jiraResults] = await Promise.all([
-      searchConfluence(latestMsg, 5),
-      searchJira(`project = ISC AND text ~ "${latestMsg.replace(/"/g, '\\"').substring(0, 100)}" ORDER BY updated DESC`, 5)
-        .catch(() => searchJira('project = ISC ORDER BY updated DESC', 5))
+      doConfluence ? searchConfluence(latestMsg, 5) : Promise.resolve([]),
+      doJira ? searchJira(`project = ${JIRA_PROJECT} AND text ~ "${latestMsg.replace(/"/g, '\\"').substring(0, 100)}" ORDER BY updated DESC`, 5)
+        .catch(() => searchJira(`project = ${JIRA_PROJECT} ORDER BY updated DESC`, 5)) : Promise.resolve([])
     ]);
 
     let confluenceContext = '';
@@ -352,14 +596,19 @@ app.post('/api/chat', async (req, res) => {
 
     const systemPrompt = `You are a security questionnaire expert assistant for Vector Solutions. You have access to FOUR live data sources:
 
-1. LOCAL SECURITY ANSWER BANK - Organization's Q&A pairs organized by 21 security categories (access-control, encryption, incident-response, etc.), product-specific overrides for SafeLMS/TargetSolutions, policy summaries, past completed questionnaires, and framework responses
+${product ? `ACTIVE PRODUCT: ${product}
+You are answering questions specifically for "${product}". All product-specific answers MUST come from the ${product} section of the answer bank. Do NOT use answers belonging to other products.` : 'No specific product selected. If a question is about a specific product, only use that product\'s answers from the bank.'}
+
+1. LOCAL SECURITY ANSWER BANK - Organization's Q&A pairs organized by security categories, product-specific answers${product ? ` (filtered to ${product})` : ''}, policy summaries, past completed questionnaires, and framework responses
 2. CONFLUENCE - Live pages from lmsportal.atlassian.net with official security policies, product documentation, and procedures
 3. JIRA - Live ISC project tickets tracking security questionnaire work for clients
 4. ATTACHED FILES - Any files the user uploads for analysis
 
 CRITICAL INSTRUCTIONS FOR ANSWERING:
+- NEVER mix answers between products. Each product (SafeLMS, TargetSolutions, Convergence, Check It, etc.) may have different answers to the same question. Using one product's answer for another is WRONG.
 - When the local answer bank has a Q&A pair that matches (even with placeholder text like "[Your answer here]"), use the QUESTION as a guide for what to answer, then pull the ACTUAL answer from Confluence pages, policies, or your security knowledge
-- Product overrides take priority: if answering about SafeLMS, check products/SafeLMS/overrides/ first
+- Product-specific answers take priority: ${product ? `check products/${product}/ first` : 'check the relevant product folder first'}
+- Organization-wide answers (from categories/) are shared and can be used as fallback for any product
 - The categories/ folder defines the 21 security domains — use these to categorize and structure your answers
 - The glossary defines standard terminology — use it consistently
 - Past questionnaires and framework responses contain real answers from previous completions — reuse and adapt them
@@ -381,6 +630,23 @@ Your role is to:
 - Reference specific Jira tickets and Confluence pages by name
 
 Be professional, thorough, and precise. Always provide substantive answers, not just references.
+
+CONFLICT HANDLING:
+- If multiple sources give DIFFERENT answers to the same question, explicitly surface the conflict. Example:
+  > **Note: Conflicting sources detected.**
+  > - Local KB (encryption.md): AES-128
+  > - Confluence (Security Policy): AES-256
+  > The product-specific answer takes priority. Please verify with your security team.
+- Never silently pick one answer when sources disagree — always show the conflict.
+
+INCOMPLETE DATA HANDLING:
+- If the ${product || 'selected product'} has no answer bank data for a question, say so explicitly:
+  > **No product-specific data found for ${product || 'this product'}.** Below is a general answer based on organization-wide policies. [NEEDS REVIEW]
+- Do NOT guess or make up product-specific technical details. Flag them clearly.
+
+MULTI-PRODUCT HANDLING:
+- If the user asks about a different product than the one selected, answer for the product they asked about and note the mismatch.
+- If the user asks about multiple products, give separate answers for each and clearly label them.
 
 RESPONSE STYLE:
 - Give DIRECT answers first, then explain. Don't start with "Based on..." or "According to..." — just answer the question.
@@ -437,6 +703,23 @@ ${fileContext}`;
     };
 
     const apiReq = https.request(options, (apiRes) => {
+      // Handle non-200 responses (auth errors, rate limits, etc.)
+      if (apiRes.statusCode !== 200) {
+        let errBody = '';
+        apiRes.on('data', (chunk) => { errBody += chunk.toString(); });
+        apiRes.on('end', () => {
+          let errMsg = `Anthropic API error (${apiRes.statusCode})`;
+          try {
+            const parsed = JSON.parse(errBody);
+            errMsg = parsed.error?.message || parsed.message || errMsg;
+          } catch {}
+          res.write(`data: ${JSON.stringify({ type: 'error', message: errMsg })}\n\n`);
+          res.write('data: {"type":"done"}\n\n');
+          res.end();
+        });
+        return;
+      }
+
       let buffer = '';
 
       apiRes.on('data', (chunk) => {
@@ -518,7 +801,7 @@ app.post('/api/process', async (req, res) => {
     const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
 
     sendEvent('progress', { step: 'Loading answer bank...', percent: 15 });
-    const knowledgeBase = loadKnowledgeBase(product);
+    const knowledgeBase = await loadKnowledgeBase(product);
 
     const questions = rows.map((row, idx) => ({
       index: idx,
@@ -549,11 +832,61 @@ app.post('/api/process', async (req, res) => {
       sendEvent('batch_complete', { batchNum, totalBatches, answers });
     }
 
+    // Second pass: search Confluence for low-confidence answers
+    const lowConf = allAnswers.filter(a => a.confidence === 'low' || !a.answer);
+    if (lowConf.length > 0) {
+      sendEvent('progress', { step: `Searching Confluence for ${lowConf.length} uncertain answers...`, percent: 87 });
+      for (let i = 0; i < lowConf.length; i += 5) {
+        const batch = lowConf.slice(i, i + 5);
+        const confResults = [];
+        for (const a of batch) {
+          const keywords = (a.question || '').replace(/[^a-zA-Z0-9\s]/g, '').split(/\s+/).filter(w => w.length > 3).slice(0, 5).join(' ');
+          if (keywords) {
+            const results = await searchConfluence(keywords, 3);
+            if (results.length > 0) {
+              confResults.push({ targetId: a.id, question: a.question, confluenceContext: results.map(r => `[${r.title}] ${r.excerpt}`).join('\n\n') });
+            }
+          }
+        }
+        if (confResults.length > 0) {
+          try {
+            const batchForFill = batch.map(a => ({ targetId: a.id, targetQuestion: a.question }));
+            const supplemented = await fillFromSources(apiKey, batchForFill, confResults, knowledgeBase, product);
+            for (const sa of supplemented) {
+              const orig = allAnswers.find(a => a.id === sa.targetId);
+              if (orig && sa.answer && sa.answer.trim()) {
+                orig.answer = sa.answer;
+                orig.confidence = sa.confidence || 'medium';
+                orig.source = (orig.source || '') + (orig.source ? ' + ' : '') + (sa.source || 'Confluence');
+              }
+            }
+          } catch (e) { console.error('Confluence supplement error:', e.message); }
+        }
+      }
+    }
+
     sendEvent('progress', { step: 'Writing output file...', percent: 90 });
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     const outputName = `completed-questionnaire-${timestamp}.xlsx`;
     const outputPath = path.join(OUTPUT_DIR, outputName);
-    writeOutputExcel(allAnswers, outputPath);
+    writeOutputExcel(allAnswers, outputPath, {
+      originalFilePath: filePath,
+      sheetName: sheetName || workbook.SheetNames[0],
+      questionColumn,
+      idColumn,
+      questions
+    });
+
+    // Collect flags for data quality summary
+    const flagged = allAnswers.filter(a => a.flags && a.flags.length > 0);
+    const conflicts = allAnswers.filter(a => a.flags?.includes('conflict'));
+    const noData = allAnswers.filter(a => a.flags?.includes('no-product-data'));
+    const needsReview = allAnswers.filter(a => a.flags?.includes('needs-review') || (a.answer || '').includes('[NEEDS REVIEW]'));
+    const crossProduct = allAnswers.filter(a => a.flags?.includes('cross-product'));
+
+    if (flagged.length > 0) {
+      sendEvent('progress', { step: `Data quality: ${conflicts.length} conflicts, ${noData.length} missing product data, ${needsReview.length} need review`, percent: 95 });
+    }
 
     sendEvent('complete', {
       outputFile: outputName,
@@ -561,6 +894,11 @@ app.post('/api/process', async (req, res) => {
       highConfidence: allAnswers.filter(a => a.confidence === 'high').length,
       mediumConfidence: allAnswers.filter(a => a.confidence === 'medium').length,
       lowConfidence: allAnswers.filter(a => a.confidence === 'low').length,
+      flagged: flagged.length,
+      conflicts: conflicts.length,
+      noProductData: noData.length,
+      needsReview: needsReview.length,
+      crossProduct: crossProduct.length,
       answers: allAnswers
     });
 
@@ -750,7 +1088,7 @@ app.get('/api/confluence/search', async (req, res) => {
 });
 
 app.get('/api/jira/search', async (req, res) => {
-  const results = await searchJira(req.query.jql || 'project = ISC ORDER BY updated DESC', parseInt(req.query.limit) || 10);
+  const results = await searchJira(req.query.jql || `project = ${JIRA_PROJECT} ORDER BY updated DESC`, parseInt(req.query.limit) || 10);
   res.json(results);
 });
 
@@ -794,7 +1132,7 @@ app.get('/api/jira/ticket/:key', async (req, res) => {
 // --- Jira statuses endpoint ---
 app.get('/api/jira/statuses', async (req, res) => {
   try {
-    const jqlEnc = encodeURIComponent('project = ISC ORDER BY updated DESC');
+    const jqlEnc = encodeURIComponent(`project = ${JIRA_PROJECT} ORDER BY updated DESC`);
     const data = await atlassianRequest(
       `/rest/api/3/search/jql?jql=${jqlEnc}&maxResults=50&fields=status`
     );
@@ -810,7 +1148,7 @@ app.get('/api/jira/statuses', async (req, res) => {
 // --- Jira issue types endpoint ---
 app.get('/api/jira/issuetypes', async (req, res) => {
   try {
-    const jqlEnc = encodeURIComponent('project = ISC ORDER BY updated DESC');
+    const jqlEnc = encodeURIComponent(`project = ${JIRA_PROJECT} ORDER BY updated DESC`);
     const data = await atlassianRequest(
       `/rest/api/3/search/jql?jql=${jqlEnc}&maxResults=50&fields=issuetype`
     );
@@ -828,7 +1166,7 @@ app.get('/api/jira/board', async (req, res) => {
   const assignee = req.query.assignee || '';
   const issueType = req.query.issueType || '';
   const status = req.query.status || 'all';
-  let jql = 'project = ISC';
+  let jql = `project = ${JIRA_PROJECT}`;
   if (assignee) jql += ` AND assignee = "${assignee}"`;
   if (issueType) jql += ` AND issuetype = "${issueType}"`;
   if (status !== 'all') jql += ` AND status = "${status}"`;
@@ -871,7 +1209,7 @@ app.get('/api/jira/board', async (req, res) => {
 // --- Jira assignees endpoint ---
 app.get('/api/jira/assignees', async (req, res) => {
   try {
-    const jqlEnc = encodeURIComponent('project = ISC ORDER BY updated DESC');
+    const jqlEnc = encodeURIComponent(`project = ${JIRA_PROJECT} ORDER BY updated DESC`);
     const data = await atlassianRequest(
       `/rest/api/3/search/jql?jql=${jqlEnc}&maxResults=50&fields=assignee`
     );
@@ -890,7 +1228,7 @@ app.get('/api/jira/tickets', async (req, res) => {
   const assignee = req.query.assignee || '';
   const issueType = req.query.issueType || '';
   const limit = parseInt(req.query.limit) || 30;
-  let jql = 'project = ISC';
+  let jql = `project = ${JIRA_PROJECT}`;
   if (status === 'open') jql += ' AND statusCategory != Done';
   else if (status === 'done') jql += ' AND statusCategory = Done';
   else if (status && status !== 'all') jql += ` AND status = "${status}"`;
@@ -931,9 +1269,9 @@ app.get('/api/jira/calendar', async (req, res) => {
 
   let jql;
   if (field === 'duedate') {
-    jql = `project = ISC AND duedate >= "${startDate}" AND duedate <= "${endDate}" ORDER BY duedate ASC`;
+    jql = `project = ${JIRA_PROJECT} AND duedate >= "${startDate}" AND duedate <= "${endDate}" ORDER BY duedate ASC`;
   } else {
-    jql = `project = ISC AND created >= "${startDate}" AND created <= "${endDate}" ORDER BY created ASC`;
+    jql = `project = ${JIRA_PROJECT} AND created >= "${startDate}" AND created <= "${endDate}" ORDER BY created ASC`;
   }
 
   try {
@@ -961,7 +1299,7 @@ app.get('/api/jira/calendar', async (req, res) => {
     // Fallback: fetch by created if duedate query fails
     try {
       const fallbackJql = encodeURIComponent(
-        `project = ISC AND created >= "${startDate}" AND created <= "${endDate}" ORDER BY created ASC`
+        `project = ${JIRA_PROJECT} AND created >= "${startDate}" AND created <= "${endDate}" ORDER BY created ASC`
       );
       const data = await atlassianRequest(
         `/rest/api/3/search/jql?jql=${fallbackJql}&maxResults=100&fields=summary,status,assignee,priority,duedate,created,updated,issuetype`
@@ -1006,9 +1344,9 @@ app.get('/api/bank/frameworks', (req, res) => {
     const frameworks = [];
     const entries = fs.readdirSync(fwDir, { withFileTypes: true });
     for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
+      if (!entry.isDirectory() || entry.name.startsWith('_archived_')) continue;
       const versions = fs.readdirSync(path.join(fwDir, entry.name), { withFileTypes: true })
-        .filter(e => e.isDirectory())
+        .filter(e => e.isDirectory() && !e.name.startsWith('_archived_'))
         .map(e => e.name);
       frameworks.push({ name: entry.name, versions });
     }
@@ -1036,6 +1374,7 @@ app.post('/api/bank/import-file', (req, res) => {
         break;
       }
       case 'product-override': {
+        if (!product) return res.status(400).json({ error: 'Product is required for product import' });
         const prodDir = path.join(BANK_ROOT, 'products', product, 'questionnaires');
         if (!fs.existsSync(prodDir)) fs.mkdirSync(prodDir, { recursive: true });
         targetPath = path.join(prodDir, `${today}-${product}-questionnaire${ext}`);
@@ -1204,7 +1543,54 @@ app.post('/api/migrate', upload.fields([{ name: 'sourceFile' }, { name: 'targetF
       sendEvent('batch', { batchNum, totalBatches, count: mappings.length });
     }
 
-    sendEvent('progress', { step: 'Migration mapping complete!', percent: 100 });
+    // Second pass: fill unanswered questions using Confluence + answer bank
+    const unanswered = allMappings.filter(m => !m.migratedAnswer || m.matchConfidence === 'none');
+    if (unanswered.length > 0) {
+      sendEvent('progress', { step: `Searching Confluence & answer bank for ${unanswered.length} unanswered questions...`, percent: 92 });
+
+      const knowledgeBase = await loadKnowledgeBase('');
+
+      // Search Confluence for unanswered questions in batches
+      const confBatchSize = 5;
+      for (let i = 0; i < unanswered.length; i += confBatchSize) {
+        const batch = unanswered.slice(i, i + confBatchSize);
+        const percent = 92 + Math.round(((i + confBatchSize) / unanswered.length) * 6);
+        sendEvent('progress', { step: `Searching sources for questions ${i + 1}-${Math.min(i + confBatchSize, unanswered.length)} of ${unanswered.length}...`, percent });
+
+        // Search Confluence for each question
+        const confResults = [];
+        for (const m of batch) {
+          const keywords = (m.targetQuestion || '').replace(/[^a-zA-Z0-9\s]/g, '').split(/\s+/).filter(w => w.length > 3).slice(0, 5).join(' ');
+          if (keywords) {
+            const results = await searchConfluence(keywords, 3);
+            if (results.length > 0) {
+              confResults.push({ targetId: m.targetId, question: m.targetQuestion, confluenceContext: results.map(r => `[${r.title}] ${r.excerpt}`).join('\n\n') });
+            }
+          }
+        }
+
+        // Use Claude to draft answers from Confluence + answer bank
+        if (confResults.length > 0 || knowledgeBase.length > 100) {
+          try {
+            const supplementAnswers = await fillFromSources(apiKey, batch, confResults, knowledgeBase, '');
+            for (const sa of supplementAnswers) {
+              const mapping = allMappings.find(m => m.targetId === sa.targetId);
+              if (mapping && sa.answer && sa.answer.trim()) {
+                mapping.migratedAnswer = sa.answer;
+                mapping.matchConfidence = sa.confidence || 'low';
+                mapping.sourceId = sa.source || 'Confluence/KB';
+                mapping.notes = (mapping.notes || '') + ' [Supplemented from ' + (sa.source || 'Confluence/KB') + ']';
+              }
+            }
+          } catch (e) {
+            console.error('Supplement pass error:', e.message);
+          }
+        }
+      }
+    }
+
+    const finalUnmapped = allMappings.filter(m => !m.migratedAnswer || m.matchConfidence === 'none').length;
+    sendEvent('progress', { step: `Migration complete! ${allMappings.length - finalUnmapped} answered, ${finalUnmapped} need manual review`, percent: 100 });
 
     // Save target file path for format-preserving export
     const sessionId = Date.now().toString() + Math.random().toString(36).slice(2);
@@ -1364,6 +1750,86 @@ function fillAnswersInWorkbook(wb, mappings) {
   }
 }
 
+function fillFromSources(apiKey, unansweredBatch, confluenceResults, knowledgeBase, product) {
+  return new Promise((resolve, reject) => {
+    const confContext = confluenceResults.map(cr =>
+      `[Question: ${cr.question}]\nConfluence findings:\n${cr.confluenceContext}`
+    ).join('\n\n---\n\n');
+
+    const questions = unansweredBatch.map(m => `[${m.targetId}] ${m.targetQuestion}`).join('\n');
+
+    const prompt = `You are a security questionnaire answering assistant. These questions could NOT be matched to any previous questionnaire answers. Try to answer them using the Confluence content and knowledge base below.
+
+${product ? `ACTIVE PRODUCT: ${product}\nAll answers MUST be specific to "${product}". Do NOT use answers from other products.` : ''}
+
+CONFLUENCE SEARCH RESULTS:
+${confContext || '(No Confluence results found)'}
+
+KNOWLEDGE BASE (answer bank, policies, past questionnaires):
+${knowledgeBase.substring(0, 120000)}
+
+QUESTIONS TO ANSWER:
+${questions}
+
+For each question, provide the best answer you can from the sources above. Return a JSON array:
+[{"targetId": "...", "answer": "the answer or empty string if truly cannot answer", "source": "Confluence|Local KB|Policy|AI-drafted", "confidence": "high|medium|low"}]
+
+RULES:
+- If Confluence or the knowledge base has relevant info, use it to compose a professional answer
+${product ? `- CRITICAL: Only use answers specific to ${product}. Never cross-contaminate with other products' answers.` : ''}
+- Mark source as "Confluence" if the answer came primarily from Confluence pages
+- Mark source as "Local KB" if from the answer bank
+- Mark source as "AI-drafted" if you had to compose it from general security knowledge
+- If you truly cannot answer, set answer to "" and confidence to "low"
+- Keep answers professional and concise
+
+Respond ONLY with the JSON array.`;
+
+    const body = JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 32000,
+      messages: [{ role: 'user', content: prompt }]
+    });
+
+    const options = {
+      hostname: 'api.anthropic.com',
+      path: '/v1/messages',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'Content-Length': Buffer.byteLength(body)
+      }
+    };
+
+    const req = https.request(options, (apiRes) => {
+      let data = '';
+      apiRes.on('data', chunk => { data += chunk; });
+      apiRes.on('end', () => {
+        try {
+          const response = JSON.parse(data);
+          if (response.error) { reject(new Error(response.error.message)); return; }
+          const text = response.content?.map(c => c.text || '').join('') || '';
+          const jsonMatch = text.match(/\[\s*\{[\s\S]*\}\s*\]/);
+          if (jsonMatch) {
+            resolve(JSON.parse(jsonMatch[0]));
+          } else {
+            resolve([]);
+          }
+        } catch (err) {
+          resolve([]);
+        }
+      });
+    });
+
+    req.on('error', () => resolve([]));
+    req.setTimeout(120000, () => { req.destroy(); resolve([]); });
+    req.write(body);
+    req.end();
+  });
+}
+
 function extractQuestionsFromExcel(filePath, originalName) {
   const workbook = XLSX.readFile(filePath);
   const questions = [];
@@ -1510,7 +1976,7 @@ async function callAIProvider(provider, model, systemPrompt, userMessages, onChu
 
   switch (provider) {
     case 'claude':
-      return callClaudeAPI(config.apiKey, model, systemPrompt, userMessages, onChunk);
+      return callClaudeStreamAPI(config.apiKey, model, systemPrompt, userMessages, onChunk);
     case 'openai':
       return callOpenAIAPI(config.apiKey, model, systemPrompt, userMessages, onChunk);
     case 'gemini':
@@ -1524,8 +1990,8 @@ async function callAIProvider(provider, model, systemPrompt, userMessages, onChu
   }
 }
 
-// Claude API call
-async function callClaudeAPI(apiKey, model, systemPrompt, userMessages, onChunk) {
+// Claude API call (multi-provider streaming)
+async function callClaudeStreamAPI(apiKey, model, systemPrompt, userMessages, onChunk) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({
       model,
@@ -1848,42 +2314,189 @@ function readMarkdownFiles(dir) {
           }
         } catch { /* skip */ }
       } else if (/\.(pdf)$/i.test(entry.name)) {
-        // PDF parsing is async — skip in sync function, PDFs handled via file upload instead
+        // Mark PDF for async parsing — will be handled by parsePDFs()
+        results.push({ file: path.relative(BANK_ROOT, fullPath).replace(/\\/g, '/'), content: '', _pdfPath: fullPath });
+      } else if (/\.(pptx)$/i.test(entry.name)) {
+        try {
+          const AdmZip = require('adm-zip');
+          const zip = new AdmZip(fullPath);
+          let pptText = `[PowerPoint: ${entry.name}]\n`;
+          const slideEntries = zip.getEntries().filter(e => /^ppt\/slides\/slide\d+\.xml$/i.test(e.entryName)).sort((a, b) => a.entryName.localeCompare(b.entryName));
+          slideEntries.forEach((slide, i) => {
+            const xml = slide.getData().toString('utf-8');
+            const text = xml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+            if (text.length > 10) pptText += `\nSlide ${i + 1}:\n${text}\n`;
+          });
+          if (pptText.length > 50) {
+            results.push({ file: path.relative(BANK_ROOT, fullPath).replace(/\\/g, '/'), content: pptText.substring(0, 30000) });
+          }
+        } catch { /* skip */ }
+      } else if (/\.(html?|xml)$/i.test(entry.name)) {
+        try {
+          const raw = fs.readFileSync(fullPath, 'utf-8');
+          const text = raw.replace(/<[^>]+>/g, ' ').replace(/&[a-z]+;/gi, ' ').replace(/\s+/g, ' ').trim();
+          if (text.length > 20) {
+            const label = entry.name.endsWith('.xml') ? 'XML' : 'HTML';
+            results.push({ file: path.relative(BANK_ROOT, fullPath).replace(/\\/g, '/'), content: `[${label}: ${entry.name}]\n${text.substring(0, 30000)}` });
+          }
+        } catch { /* skip */ }
+      } else if (/\.(rtf)$/i.test(entry.name)) {
+        try {
+          const raw = fs.readFileSync(fullPath, 'utf-8');
+          // Basic RTF text extraction: strip control words and groups
+          const text = raw.replace(/\{\\[^{}]*\}/g, '').replace(/\\[a-z]+\d*\s?/gi, '').replace(/[{}]/g, '').replace(/\s+/g, ' ').trim();
+          if (text.length > 20) {
+            results.push({ file: path.relative(BANK_ROOT, fullPath).replace(/\\/g, '/'), content: `[RTF: ${entry.name}]\n${text.substring(0, 30000)}` });
+          }
+        } catch { /* skip */ }
       }
     }
   } catch { /* skip */ }
   return results;
 }
 
-function loadKnowledgeBase(product) {
+async function parsePDFs(files) {
+  const pdfParse = require('pdf-parse');
+  for (const f of files) {
+    if (f._pdfPath) {
+      try {
+        const buffer = fs.readFileSync(f._pdfPath);
+        const data = await pdfParse(buffer);
+        f.content = `[PDF: ${path.basename(f._pdfPath)}] (${data.numpages} pages)\n${data.text.substring(0, 30000)}`;
+        delete f._pdfPath;
+      } catch (e) {
+        f.content = `[PDF: ${path.basename(f._pdfPath)}] (failed to parse: ${e.message})`;
+        delete f._pdfPath;
+      }
+    }
+  }
+  return files;
+}
+
+async function loadKnowledgeBase(product) {
+  // --- Get all known product names for scoping ---
+  let allProductNames = [];
+  try {
+    allProductNames = fs.readdirSync(path.join(BANK_ROOT, 'products'), { withFileTypes: true })
+      .filter(d => d.isDirectory() && !d.name.startsWith('_archived_') && d.name !== 'TEMPLATE')
+      .map(d => d.name);
+  } catch { }
+
+  // Helper: split files into product-specific vs general
+  // A file is product-specific if its path or filename contains a known product name
+  function scopeFiles(files, activeProduct) {
+    const general = [];
+    const forProduct = [];
+    const otherProducts = [];
+    for (const f of files) {
+      const filePath = (f.file || '').toLowerCase();
+      let matchedProduct = null;
+      for (const pName of allProductNames) {
+        if (filePath.includes(pName.toLowerCase())) {
+          matchedProduct = pName;
+          break;
+        }
+      }
+      if (!matchedProduct) {
+        // No product name found — this is a general/shared file
+        general.push(f);
+      } else if (activeProduct && matchedProduct.toLowerCase() === activeProduct.toLowerCase()) {
+        // Matches the active product
+        forProduct.push(f);
+      } else {
+        // Belongs to a different product — exclude when product is selected
+        otherProducts.push(f);
+      }
+    }
+    return { general, forProduct, otherProducts };
+  }
+
+  // --- Load all shared/org-wide sources (always included) ---
   const categories = readMarkdownFiles(path.join(BANK_ROOT, 'categories'));
   const policies = readMarkdownFiles(path.join(BANK_ROOT, 'policies'));
-  const products = product
-    ? readMarkdownFiles(path.join(BANK_ROOT, 'products', product))
-    : readMarkdownFiles(path.join(BANK_ROOT, 'products'));
-  const pastQuestionnaires = readMarkdownFiles(path.join(BANK_ROOT, 'past-questionnaires'));
-  const frameworks = readMarkdownFiles(path.join(BANK_ROOT, 'frameworks'));
-  const clients = readMarkdownFiles(path.join(BANK_ROOT, 'clients'));
-  const imports = readMarkdownFiles(path.join(BANK_ROOT, 'imports'));
+
+  // --- Load sources that may contain product-specific files ---
+  const allPastQ = readMarkdownFiles(path.join(BANK_ROOT, 'past-questionnaires'));
+  const allFrameworks = readMarkdownFiles(path.join(BANK_ROOT, 'frameworks'));
+  const allClients = readMarkdownFiles(path.join(BANK_ROOT, 'clients'));
+  const allImports = readMarkdownFiles(path.join(BANK_ROOT, 'imports'));
+
+  // Parse PDFs in all collections
+  await Promise.all([
+    parsePDFs(categories), parsePDFs(policies), parsePDFs(allPastQ),
+    parsePDFs(allFrameworks), parsePDFs(allClients), parsePDFs(allImports)
+  ]);
 
   let glossary = '';
   try { glossary = fs.readFileSync(path.join(BANK_ROOT, 'glossary.md'), 'utf-8'); } catch { }
 
+  // --- Scope product-specific files ---
+  const scopedPastQ = scopeFiles(allPastQ, product);
+  const scopedFW = scopeFiles(allFrameworks, product);
+  const scopedClients = scopeFiles(allClients, product);
+  const scopedImports = scopeFiles(allImports, product);
+
+  // Files to include: general + product-matched (exclude other products' files)
+  const pastQuestionnaires = product ? [...scopedPastQ.general, ...scopedPastQ.forProduct] : allPastQ;
+  const frameworks = product ? [...scopedFW.general, ...scopedFW.forProduct] : allFrameworks;
+  const clients = product ? [...scopedClients.general, ...scopedClients.forProduct] : allClients;
+  const imports = product ? [...scopedImports.general, ...scopedImports.forProduct] : allImports;
+
+  // --- Product section ---
+  let productSection = '';
+  if (product) {
+    const productFiles = readMarkdownFiles(path.join(BANK_ROOT, 'products', product));
+    await parsePDFs(productFiles);
+    productSection = [
+      `\n=== PRODUCT: ${product} (ACTIVE PRODUCT — USE THESE ANSWERS) ===`,
+      `IMPORTANT: All answers below are specific to ${product}. Use ONLY these product-specific answers. Do NOT mix in answers from other products.`,
+      ...productFiles.map(f => `\n--- ${f.file} ---\n${f.content}`)
+    ].join('\n');
+  } else {
+    // No product selected — load all but clearly label each
+    const productsDir = path.join(BANK_ROOT, 'products');
+    const sections = [];
+    try {
+      for (const pName of allProductNames) {
+        const pFiles = readMarkdownFiles(path.join(productsDir, pName));
+        await parsePDFs(pFiles);
+        if (pFiles.length > 0) {
+          sections.push(`\n--- PRODUCT: ${pName} ---`);
+          sections.push(...pFiles.map(f => `\n${f.file}:\n${f.content}`));
+        }
+      }
+    } catch { }
+    productSection = [
+      '\n=== ALL PRODUCTS (No specific product selected) ===',
+      'WARNING: Multiple products are loaded below. Each product has its own answers. Do NOT mix answers between products. If a question is about a specific product, only use answers from that product section.',
+      ...sections
+    ].join('\n');
+  }
+
+  // --- Label product-matched files in shared sections ---
+  const labelFile = (f) => {
+    const tag = product ? ` [${product}]` : '';
+    return `\n--- ${f.file}${tag} ---\n${f.content}`;
+  };
+
   return [
-    '=== CATEGORY ANSWERS (Organization-wide Q&A) ===',
+    '=== CATEGORY ANSWERS (Organization-wide Q&A — applies to ALL products) ===',
     '(Note: Answers marked [Your answer here] are placeholders — use Confluence or your knowledge to draft real answers)',
     ...categories.map(f => `\n--- ${f.file} ---\n${f.content}`),
-    '\n=== POLICIES ===',
+    '\n=== POLICIES (Organization-wide — applies to ALL products) ===',
     ...policies.map(f => `\n--- ${f.file} ---\n${f.content}`),
-    '\n=== PRODUCT DETAILS & OVERRIDES ===',
-    ...products.map(f => `\n--- ${f.file} ---\n${f.content}`),
+    productSection,
     '\n=== PAST COMPLETED QUESTIONNAIRES ===',
+    product ? `(Showing: general + ${product}-specific files only. Other products excluded.)` : '',
     ...pastQuestionnaires.map(f => `\n--- ${f.file} ---\n${f.content}`),
     '\n=== FRAMEWORK RESPONSES ===',
+    product ? `(Showing: general + ${product}-specific files only. Other products excluded.)` : '',
     ...frameworks.map(f => `\n--- ${f.file} ---\n${f.content}`),
     '\n=== CLIENT CONTEXT ===',
+    product ? `(Showing: general + ${product}-specific files only. Other products excluded.)` : '',
     ...clients.map(f => `\n--- ${f.file} ---\n${f.content}`),
     '\n=== IMPORTS ===',
+    product ? `(Showing: general + ${product}-specific files only. Other products excluded.)` : '',
     ...imports.map(f => `\n--- ${f.file} ---\n${f.content}`),
     '\n=== GLOSSARY ===',
     glossary
@@ -1894,18 +2507,39 @@ function callClaudeAPI(apiKey, questions, knowledgeBase, product) {
   return new Promise((resolve, reject) => {
     const prompt = `You are a security questionnaire answering assistant. Using the knowledge base below, answer each question accurately and professionally.
 
+${product ? `ACTIVE PRODUCT: ${product}
+You are answering questions ONLY for the product "${product}". All answers MUST be specific to ${product}. Do NOT use answers from other products. If the knowledge base contains answers for multiple products, ONLY use the section labeled "PRODUCT: ${product}".` : 'No specific product selected. If a question references a specific product, answer for that product only.'}
+
 PRIORITY ORDER FOR ANSWERS:
-1. Product-specific overrides for ${product || 'any product'} (highest priority)
-2. Organization-wide category answers
+1. Product-specific answers for ${product || 'the relevant product'} (highest priority — NEVER use another product's answers)
+2. Organization-wide category answers (shared across all products)
 3. Policy documents
 4. Your security knowledge (only if no answer exists in the bank)
 
 RULES:
-- If the answer bank has a matching Q&A, use that answer (adapt wording if needed)
+- CRITICAL: Never mix answers between products. Each product (SafeLMS, TargetSolutions, Convergence, etc.) has its own specific answers. Using Product A's answer for Product B is WRONG.
+- If the answer bank has a matching Q&A for the selected product, use that answer (adapt wording if needed)
+- Organization-wide answers (from categories/) apply to ALL products and can be used as fallback
 - If no match exists, draft a professional answer based on the policies and mark it as [NEEDS REVIEW]
 - Keep answers concise but complete
 - Use the glossary for consistent terminology
-- Return a JSON array with objects: {"id": "...", "question": "...", "answer": "...", "source": "...", "confidence": "high|medium|low"}
+
+CONFLICT HANDLING:
+- If multiple sources give DIFFERENT answers to the same question, flag it: set confidence to "medium", prepend "[CONFLICTING SOURCES] " to the answer, include the best answer, and list the conflicting sources in the "source" field separated by " vs ".
+- Example: if categories/encryption.md says "AES-128" but products/${product || 'X'}/overrides says "AES-256", the answer should note both and use the product-specific one as primary.
+
+INCOMPLETE DATA HANDLING:
+- If the product has NO data in the answer bank for a question, do NOT guess or use another product's answer.
+- Instead, set the answer to "[NO PRODUCT DATA] " followed by a generic industry-standard answer, set confidence to "low", and set source to "AI-drafted (no ${product || 'product'} data)".
+- If a question references a product feature that doesn't exist in the knowledge base, say so explicitly: "This information is not available in the ${product || 'selected product'} answer bank. [NEEDS REVIEW]"
+
+MULTI-PRODUCT DETECTION:
+- If a question explicitly mentions a product name (e.g., "Does SafeLMS support...", "For TargetSolutions..."), answer ONLY for the named product, even if a different product is selected.
+- If this happens, note it in the source: "Answered for [named product] (question specifies product)"
+- If the question mentions multiple products, answer for each separately.
+
+Return a JSON array with objects: {"id": "...", "question": "...", "answer": "...", "source": "...", "confidence": "high|medium|low", "flags": []}
+The "flags" array can contain: "conflict", "no-product-data", "needs-review", "cross-product" (when question references a different product than selected).
 
 KNOWLEDGE BASE:
 ${knowledgeBase.substring(0, 180000)}
@@ -1966,20 +2600,130 @@ Respond ONLY with the JSON array, no other text.`;
   });
 }
 
-function writeOutputExcel(answers, outputPath) {
+function writeOutputExcel(answers, outputPath, originalInfo) {
+  try {
+    if (originalInfo?.originalFilePath && fs.existsSync(originalInfo.originalFilePath)) {
+      // Copy the original file first to preserve everything (styles, formatting, colors, borders, etc.)
+      fs.copyFileSync(originalInfo.originalFilePath, outputPath);
+
+      // Re-read the copy so we modify it in place
+      const wb = XLSX.readFile(outputPath, { cellStyles: true, cellNF: true, cellDates: true });
+      const targetSheet = originalInfo.sheetName || wb.SheetNames[0];
+      const ws = wb.Sheets[targetSheet];
+      if (!ws) throw new Error('Sheet not found');
+
+      // Get sheet range
+      const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+
+      // Read header row to find columns
+      const headers = {};
+      for (let c = range.s.c; c <= range.e.c; c++) {
+        const cell = ws[XLSX.utils.encode_cell({ r: range.s.r, c })];
+        if (cell && cell.v != null) headers[String(cell.v).trim()] = c;
+      }
+
+      // Find the question and ID columns by index
+      const qColName = originalInfo.questionColumn;
+      const idColName = originalInfo.idColumn;
+      const qColIdx = qColName ? headers[qColName] : undefined;
+      const idColIdx = idColName ? headers[idColName] : undefined;
+
+      // Find existing answer/response column
+      const ansColEntry = Object.entries(headers).find(([name]) =>
+        /^(answer|response|reply|vendor.?response|assessment)/i.test(name)
+      );
+      const existingAnsColIdx = ansColEntry ? ansColEntry[1] : null;
+
+      // Determine where to write AI answers: use existing answer column, or append new columns after last
+      const lastCol = range.e.c;
+      const aiAnsColIdx = existingAnsColIdx != null ? existingAnsColIdx : lastCol + 1;
+      const aiSourceColIdx = lastCol + (existingAnsColIdx != null ? 1 : 2);
+      const aiConfColIdx = lastCol + (existingAnsColIdx != null ? 2 : 3);
+      const aiFlagsColIdx = lastCol + (existingAnsColIdx != null ? 3 : 4);
+
+      // Write header labels for new columns (only if we're appending)
+      if (existingAnsColIdx == null) {
+        ws[XLSX.utils.encode_cell({ r: range.s.r, c: aiAnsColIdx })] = { t: 's', v: 'AI Answer' };
+      }
+      ws[XLSX.utils.encode_cell({ r: range.s.r, c: aiSourceColIdx })] = { t: 's', v: 'Source' };
+      ws[XLSX.utils.encode_cell({ r: range.s.r, c: aiConfColIdx })] = { t: 's', v: 'Confidence' };
+      ws[XLSX.utils.encode_cell({ r: range.s.r, c: aiFlagsColIdx })] = { t: 's', v: 'Flags' };
+
+      // Build answer lookup by ID and by question text
+      const answerByID = {};
+      const answerByQ = {};
+      for (const a of answers) {
+        if (a.id) answerByID[String(a.id).trim()] = a;
+        if (a.question) answerByQ[a.question.trim().toLowerCase()] = a;
+      }
+
+      // Write answers into cells row by row
+      for (let r = range.s.r + 1; r <= range.e.r; r++) {
+        // Get row ID
+        let rowId = '';
+        if (idColIdx != null) {
+          const idCell = ws[XLSX.utils.encode_cell({ r, c: idColIdx })];
+          if (idCell && idCell.v != null) rowId = String(idCell.v).trim();
+        }
+
+        // Get row question
+        let rowQ = '';
+        if (qColIdx != null) {
+          const qCell = ws[XLSX.utils.encode_cell({ r, c: qColIdx })];
+          if (qCell && qCell.v != null) rowQ = String(qCell.v).trim();
+        }
+
+        // Match answer
+        let match = answerByID[rowId];
+        if (!match && rowQ) match = answerByQ[rowQ.toLowerCase()];
+
+        if (match) {
+          // Write answer into the cell
+          ws[XLSX.utils.encode_cell({ r, c: aiAnsColIdx })] = { t: 's', v: match.answer || '' };
+          ws[XLSX.utils.encode_cell({ r, c: aiSourceColIdx })] = { t: 's', v: match.source || '' };
+          ws[XLSX.utils.encode_cell({ r, c: aiConfColIdx })] = { t: 's', v: match.confidence || 'low' };
+          ws[XLSX.utils.encode_cell({ r, c: aiFlagsColIdx })] = { t: 's', v: (match.flags || []).join(', ') };
+        }
+      }
+
+      // Expand the sheet range to include new columns
+      const newLastCol = Math.max(range.e.c, aiFlagsColIdx);
+      ws['!ref'] = XLSX.utils.encode_range({
+        s: range.s,
+        e: { r: range.e.r, c: newLastCol }
+      });
+
+      // Set column widths for new columns
+      if (!ws['!cols']) ws['!cols'] = [];
+      while (ws['!cols'].length <= newLastCol) ws['!cols'].push({ wch: 15 });
+      ws['!cols'][aiAnsColIdx] = { wch: 80 };
+      ws['!cols'][aiSourceColIdx] = { wch: 30 };
+      ws['!cols'][aiConfColIdx] = { wch: 12 };
+      ws['!cols'][aiFlagsColIdx] = { wch: 25 };
+
+      // Write back — the original file was already copied, so all other sheets/formatting are intact
+      XLSX.writeFile(wb, outputPath);
+      return;
+    }
+  } catch (e) {
+    console.error('Original format export failed, using generic:', e.message);
+  }
+
+  // Fallback: generic export
   const data = answers.map(a => ({
     'Question ID': a.id || '',
     'Question': a.question || '',
     'Answer': a.answer || '',
     'Source': a.source || '',
     'Confidence': a.confidence || 'low',
-    'Needs Review': a.confidence === 'low' ? 'YES' : 'NO'
+    'Flags': (a.flags || []).join(', '),
+    'Needs Review': (a.confidence === 'low' || (a.flags || []).length > 0) ? 'YES' : 'NO'
   }));
 
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.json_to_sheet(data);
   ws['!cols'] = [
-    { wch: 14 }, { wch: 60 }, { wch: 80 }, { wch: 30 }, { wch: 12 }, { wch: 14 }
+    { wch: 14 }, { wch: 60 }, { wch: 80 }, { wch: 30 }, { wch: 12 }, { wch: 25 }, { wch: 14 }
   ];
   XLSX.utils.book_append_sheet(wb, ws, 'Answers');
   XLSX.writeFile(wb, outputPath);
@@ -2038,7 +2782,7 @@ app.post('/api/bank/save-answer', (req, res) => {
 });
 
 // Debug: check what the knowledge base loads
-app.get('/api/debug/bank-stats', (req, res) => {
+app.get('/api/debug/bank-stats', async (req, res) => {
   const categories = readMarkdownFiles(path.join(BANK_ROOT, 'categories'));
   const policies = readMarkdownFiles(path.join(BANK_ROOT, 'policies'));
   const products = readMarkdownFiles(path.join(BANK_ROOT, 'products'));
@@ -2046,7 +2790,7 @@ app.get('/api/debug/bank-stats', (req, res) => {
   const frameworks = readMarkdownFiles(path.join(BANK_ROOT, 'frameworks'));
   const clients = readMarkdownFiles(path.join(BANK_ROOT, 'clients'));
   const imports = readMarkdownFiles(path.join(BANK_ROOT, 'imports'));
-  const kb = loadKnowledgeBase('');
+  const kb = await loadKnowledgeBase('');
   res.json({
     files: { categories: categories.length, policies: policies.length, products: products.length, pastQuestionnaires: pastQ.length, frameworks: frameworks.length, clients: clients.length, imports: imports.length },
     totalFiles: categories.length + policies.length + products.length + pastQ.length + frameworks.length + clients.length + imports.length,

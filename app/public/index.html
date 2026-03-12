@@ -4,49 +4,62 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Security QA — Questionnaire Automator</title>
+<link rel="icon" type="image/svg+xml" href="logo.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
+/* Bootstrap overrides to preserve existing layout */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{margin:0!important;padding:0!important}
+label{margin-bottom:0!important}
+h1,h2,h3,h4,h5,h6,p,ol,ul,dl,hr,pre,blockquote,figure{margin-top:0!important;margin-bottom:0!important}
+dt{font-weight:inherit!important}
+.mn,.sb,.pn,.bi,.bc,.ch-scroll,.ch-inner,.welcome,.inp-area,.inp-wrap,.inp-box,.top,.sb-top,.sb-nav,.sb-hist,.sb-foot,.admin-form,.admin-card{margin:0;padding-left:0;padding-right:0}
 :root{
---sb:#0a0a0a;--sb-h:#161616;--sb-b:#1e1e1e;
---bg:#111;--sf:#181818;--sf2:#1e1e1e;--sf3:#282828;
---bd:#222;--bd2:#333;
---tx:#eaeaea;--tx2:#888;--tx3:#555;
---ac:#7c3aed;--ac2:#a78bfa;--ac3:rgba(124,58,237,.08);
---gn:#10b981;--yl:#f59e0b;--rd:#ef4444;--bl:#3b82f6;
---r:8px;--sw:250px;
---f:'Outfit',sans-serif;--m:'JetBrains Mono',monospace;
---glow:0 0 20px rgba(124,58,237,.15);
+--sb:#080b08;--sb-h:#0f1510;--sb-b:#151e16;
+--bg:#0b0e0b;--sf:#0e120e;--sf2:#131a14;--sf3:#1a231b;
+--bd:#1e2e1a;--bd2:#2a3d24;
+--tx:#b8c9a8;--tx2:#6a7d58;--tx3:#4a5e3c;
+--ac:#88b060;--ac2:#a4c878;--ac3:rgba(136,176,96,.06);
+--gn:#6aad3a;--yl:#c8a832;--rd:#c44040;--bl:#5090b8;
+--r:6px;--sw:250px;
+--f:'JetBrains Mono',monospace;--m:'JetBrains Mono',monospace;
+--glow:0 0 20px rgba(136,176,96,.1);
 }
 html,body{height:100%;overflow:hidden}
-body{font-family:var(--f);background:var(--bg);color:var(--tx);display:flex;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;background-image:radial-gradient(ellipse at 20% 50%,rgba(124,58,237,.03) 0%,transparent 50%),radial-gradient(ellipse at 80% 20%,rgba(59,130,246,.02) 0%,transparent 50%)}
+body{font-family:var(--f);background:var(--bg);color:var(--tx);display:flex;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;background-image:
+repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(136,176,96,.01) 2px,rgba(136,176,96,.01) 4px),
+radial-gradient(ellipse at 20% 80%,rgba(136,176,96,.02) 0%,transparent 50%),
+radial-gradient(ellipse at 80% 20%,rgba(80,144,184,.015) 0%,transparent 50%)}
+body::after{content:'';position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9999;background:repeating-linear-gradient(0deg,rgba(0,0,0,.025) 0px,rgba(0,0,0,.025) 1px,transparent 1px,transparent 3px);mix-blend-mode:multiply}
 ::-webkit-scrollbar{width:4px}
-::-webkit-scrollbar-thumb{background:#2a2a2a;border-radius:4px}
-::-webkit-scrollbar-thumb:hover{background:#3a3a3a}
+::-webkit-scrollbar-thumb{background:#243420;border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:#344a2e}
 ::-webkit-scrollbar-track{background:transparent}
+@keyframes termBlink{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes termGlow{0%,100%{text-shadow:0 0 4px rgba(136,176,96,.25)}50%{text-shadow:0 0 8px rgba(136,176,96,.4),0 0 16px rgba(136,176,96,.15)}}
 
-.sb{width:var(--sw);background:rgba(10,10,10,.9);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);display:flex;flex-direction:column;border-right:1px solid rgba(255,255,255,.04);transition:width .3s cubic-bezier(.4,0,.2,1),transform .3s cubic-bezier(.4,0,.2,1);flex-shrink:0;z-index:10;overflow:hidden}
+.sb{width:var(--sw);background:rgba(8,11,8,.96);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);display:flex;flex-direction:column;border-right:1px solid rgba(136,176,96,.07);transition:width .3s cubic-bezier(.4,0,.2,1),transform .3s cubic-bezier(.4,0,.2,1);flex-shrink:0;z-index:10;overflow:hidden}
 .sb.shut{width:0;border:none;transform:translateX(calc(var(--sw)*-1))}
 .sb-top{padding:10px 10px 8px}
 .sb-brand{display:flex;align-items:center;gap:8px;margin-bottom:10px}
-.sb-logo{width:30px;height:30px;background:linear-gradient(135deg,var(--ac),var(--ac2));border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0;box-shadow:0 0 16px rgba(124,58,237,.3);animation:logoPulse 3s ease infinite}
-@keyframes logoPulse{0%,100%{box-shadow:0 0 16px rgba(124,58,237,.3)}50%{box-shadow:0 0 24px rgba(124,58,237,.5)}}
-.sb-brand-text{font-size:13px;font-weight:600;white-space:nowrap;letter-spacing:-.01em}
+.sb-logo{width:30px;height:30px;flex-shrink:0}
+
+.sb-brand-text{font-size:13px;font-weight:600;white-space:nowrap;letter-spacing:-.01em;color:var(--ac);text-shadow:0 0 6px rgba(136,176,96,.25)}
 .sb-brand-sub{font-size:9px;color:var(--tx3);font-weight:400}
 .new-btn{display:flex;align-items:center;gap:7px;width:100%;padding:7px 10px;background:transparent;border:1px solid var(--bd);border-radius:7px;color:var(--tx);font-family:var(--f);font-size:12px;font-weight:500;cursor:pointer;transition:all .2s;margin-bottom:8px}
 .new-btn:hover{background:var(--sb-h);border-color:var(--bd2)}
 .new-btn svg{width:16px;height:16px;opacity:.7}
-.sb-nav{padding:4px 8px;border-bottom:1px solid rgba(255,255,255,.04);margin-bottom:4px}
-.sb-nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;font-size:13px;color:var(--tx2);cursor:pointer;transition:all .15s;margin-bottom:1px;font-weight:400;border:none;background:none;width:100%;font-family:var(--f)}
-.sb-nav-item:hover{background:var(--sb-h);color:var(--tx)}
-.sb-nav-item.on{background:var(--sb-h);color:var(--tx);font-weight:500}
+.sb-nav{padding:4px 8px;border-bottom:1px solid rgba(136,176,96,.06);margin-bottom:4px}
+.sb-nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:6px;font-size:13px;color:var(--tx2);cursor:pointer;transition:all .15s;margin-bottom:1px;font-weight:400;border:none;background:none;width:100%;font-family:var(--f)}
+.sb-nav-item:hover{background:rgba(136,176,96,.04);color:var(--ac2)}
+.sb-nav-item.on{background:rgba(136,176,96,.08);color:var(--ac);font-weight:500;text-shadow:0 0 4px rgba(136,176,96,.2)}
 .sb-nav-item svg{width:18px;height:18px;opacity:.6;flex-shrink:0}
-.sb-nav-item.on svg{opacity:.9}
-.tabs{display:inline-flex;gap:2px;background:var(--sb-h);border-radius:8px;padding:3px}
-.tabs button{padding:6px 12px;background:none;border:none;border-radius:6px;color:var(--tx3);font-family:var(--f);font-size:11px;font-weight:500;cursor:pointer;transition:all .2s;white-space:nowrap}
-.tabs button:hover{color:var(--tx2)}
-.tabs button.on{background:var(--sb);color:var(--tx);box-shadow:0 1px 4px rgba(0,0,0,.4)}
+.sb-nav-item.on svg{opacity:.9;filter:drop-shadow(0 0 3px rgba(136,176,96,.4))}
+.tabs{display:inline-flex;gap:2px;background:var(--sb-h);border-radius:6px;padding:3px;border:1px solid rgba(136,176,96,.06)}
+.tabs button{padding:6px 12px;background:none;border:none;border-radius:5px;color:var(--tx3);font-family:var(--f);font-size:11px;font-weight:500;cursor:pointer;transition:all .2s;white-space:nowrap}
+.tabs button:hover{color:var(--ac2)}
+.tabs button.on{background:rgba(136,176,96,.1);color:var(--ac);box-shadow:0 0 8px rgba(136,176,96,.15);text-shadow:0 0 4px rgba(136,176,96,.3)}
 .sb-hist{flex:1;overflow-y:auto;padding:8px 8px 4px}
 .sb-hist-label{font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.8px;padding:8px 8px 6px;user-select:none}
 .hitem{display:flex;align-items:center;gap:6px;padding:7px 8px;border-radius:7px;font-size:11px;color:var(--tx2);cursor:pointer;transition:background .12s;margin-bottom:1px}
@@ -56,7 +69,7 @@ body{font-family:var(--f);background:var(--bg);color:var(--tx);display:flex;-web
 .hitem-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hitem-del{flex-shrink:0;opacity:0;background:none;border:none;color:var(--tx3);cursor:pointer;font-size:13px;padding:2px 4px;border-radius:4px;transition:all .12s;line-height:1}
 .hitem:hover .hitem-del{opacity:1}
-.hitem-del:hover{color:var(--rd);background:rgba(239,68,68,.1)}
+.hitem-del:hover{color:var(--rd);background:rgba(196,64,64,.1)}
 .sb-foot{padding:10px 14px;border-top:1px solid var(--bd)}
 .sb-foot label{font-size:10px;color:var(--tx3);display:block;margin-bottom:4px;font-weight:500;letter-spacing:.3px;text-transform:uppercase}
 .sb-sel{width:100%;padding:7px 8px;background:var(--sb-h);border:1px solid var(--bd);border-radius:6px;color:var(--tx);font-family:var(--f);font-size:12px;outline:none;cursor:pointer;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236a6a6a' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;padding-right:24px}
@@ -78,9 +91,9 @@ body{font-family:var(--f);background:var(--bg);color:var(--tx);display:flex;-web
 .top-r{display:flex;align-items:center;gap:6px;margin-left:auto}
 .pill{display:flex;align-items:center;gap:4px;padding:3px 9px;border-radius:14px;font-size:10px;font-weight:500;letter-spacing:.03em;background:none;position:relative}
 .pill .dot{width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 6px currentColor}
-.pill.cf{color:#5ba3fc}
-.pill.jr{color:#4d8eff}
-.pill.lc{color:#34d399}
+.pill.cf{color:#6898b8}
+.pill.jr{color:#5a80a8}
+.pill.lc{color:#78a860}
 .p-sel{background:var(--sf2);border:1px solid var(--bd);border-radius:7px;padding:4px 8px;color:var(--tx);font-family:var(--f);font-size:11px;outline:none;cursor:pointer}
 .pn{display:none;flex-direction:column;flex:1;min-height:0}
 .pn.on{display:flex}
@@ -91,13 +104,13 @@ body{font-family:var(--f);background:var(--bg);color:var(--tx);display:flex;-web
 .welcome p{animation:fadeUp .6s ease .2s both}
 .welcome .sugs{animation:fadeUp .6s ease .3s both}
 @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
-.w-logo{width:56px;height:56px;background:linear-gradient(135deg,var(--ac),#6366f1,var(--ac2));border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:700;color:#fff;margin-bottom:22px;box-shadow:0 0 60px rgba(124,58,237,.25),0 0 120px rgba(124,58,237,.1);animation:heroGlow 4s ease infinite}
-@keyframes heroGlow{0%,100%{box-shadow:0 0 60px rgba(124,58,237,.25),0 0 120px rgba(124,58,237,.1)}50%{box-shadow:0 0 80px rgba(124,58,237,.35),0 0 160px rgba(124,58,237,.15)}}
-.welcome h2{font-size:24px;font-weight:600;letter-spacing:-.02em;margin-bottom:6px}
+.w-logo{width:56px;height:56px;margin-bottom:22px}
+
+.welcome h2{font-size:24px;font-weight:600;letter-spacing:-.02em;margin-bottom:6px;color:var(--ac);text-shadow:0 0 10px rgba(136,176,96,.3),0 0 30px rgba(136,176,96,.1);animation:termGlow 3s ease infinite}
 .welcome p{color:var(--tx2);font-size:14px;max-width:400px;line-height:1.5}
 .sugs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:24px;max-width:540px;width:100%}
-.sug{padding:14px 16px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:var(--r);font-size:13px;color:var(--tx2);cursor:pointer;text-align:left;transition:all .25s;line-height:1.4;backdrop-filter:blur(8px)}
-.sug:hover{background:rgba(124,58,237,.06);border-color:rgba(124,58,237,.2);color:var(--tx);transform:translateY(-2px);box-shadow:0 4px 20px rgba(0,0,0,.3),0 0 30px rgba(124,58,237,.05)}
+.sug{padding:14px 16px;background:rgba(136,176,96,.02);border:1px solid rgba(136,176,96,.08);border-radius:var(--r);font-size:13px;color:var(--tx2);cursor:pointer;text-align:left;transition:all .25s;line-height:1.4;backdrop-filter:blur(8px)}
+.sug:hover{background:rgba(136,176,96,.06);border-color:rgba(136,176,96,.25);color:var(--ac);transform:translateY(-2px);box-shadow:0 4px 20px rgba(0,0,0,.3),0 0 20px rgba(136,176,96,.08)}
 .msg{display:flex;flex-direction:column;padding:10px 0;position:relative;animation:msgIn .25s ease}
 @keyframes msgIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 .av{display:none}
@@ -110,20 +123,20 @@ body{font-family:var(--f);background:var(--bg);color:var(--tx);display:flex;-web
 .msg[data-role="assistant"] .mb{padding-left:0}
 .mb{font-size:14.5px;line-height:1.75;word-break:break-word;letter-spacing:.005em;font-weight:400;color:var(--tx)}
 .mb p{margin-bottom:10px}.mb p:last-child{margin-bottom:0}
-.mb strong{font-weight:600;color:#fff}.mb em{color:var(--tx2)}
-.mb h1,.mb h2,.mb h3{font-weight:700;letter-spacing:-.02em;color:#fff}
-.mb h1{font-size:17px;margin:18px 0 8px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.06)}
+.mb strong{font-weight:600;color:var(--ac)}.mb em{color:var(--tx2)}
+.mb h1,.mb h2,.mb h3{font-weight:700;letter-spacing:-.02em;color:var(--ac)}
+.mb h1{font-size:17px;margin:18px 0 8px;padding-bottom:6px;border-bottom:1px solid rgba(136,176,96,.1)}
 .mb h2{font-size:15px;margin:14px 0 6px;color:var(--ac2)}
 .mb h3{font-size:13.5px;margin:12px 0 4px}
 .mb ul,.mb ol{margin:8px 0;padding-left:20px}.mb li{margin-bottom:5px;line-height:1.6}
 .mb li strong{color:var(--ac2)}
-.mb code{background:rgba(124,58,237,.1);padding:2px 6px;border-radius:4px;font-family:var(--m);font-size:12.5px;color:#c4b5fd;border:1px solid rgba(124,58,237,.12)}
-.mb pre{background:#080808;border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:14px 16px;overflow-x:auto;margin:12px 0}
-.mb pre code{background:none;padding:0;color:#d4d4d4;font-size:12.5px;line-height:1.65;border:none}
+.mb code{background:rgba(136,176,96,.08);padding:2px 6px;border-radius:4px;font-family:var(--m);font-size:12.5px;color:var(--ac2);border:1px solid rgba(136,176,96,.1)}
+.mb pre{background:#080c08;border:1px solid rgba(136,176,96,.08);border-radius:6px;padding:14px 16px;overflow-x:auto;margin:12px 0;box-shadow:inset 0 0 30px rgba(136,176,96,.015)}
+.mb pre code{background:none;padding:0;color:#98b888;font-size:12.5px;line-height:1.65;border:none}
 .mb table{border-collapse:collapse;width:100%;margin:12px 0;font-size:12.5px;border-radius:6px;overflow:hidden}
-.mb th,.mb td{border:1px solid rgba(255,255,255,.06);padding:8px 12px;text-align:left}
-.mb th{background:rgba(124,58,237,.06);font-weight:600;color:var(--ac2);font-size:11px;text-transform:uppercase;letter-spacing:.3px}
-.mb blockquote{border-left:3px solid var(--ac);padding:6px 16px;margin:12px 0;color:var(--tx2);background:rgba(124,58,237,.03);border-radius:0 6px 6px 0}
+.mb th,.mb td{border:1px solid rgba(136,176,96,.08);padding:8px 12px;text-align:left}
+.mb th{background:rgba(136,176,96,.06);font-weight:600;color:var(--ac);font-size:11px;text-transform:uppercase;letter-spacing:.3px}
+.mb blockquote{border-left:3px solid var(--ac);padding:6px 16px;margin:12px 0;color:var(--tx2);background:rgba(136,176,96,.03);border-radius:0 6px 6px 0}
 .mact{display:flex;gap:3px;margin-top:6px;opacity:0;transition:opacity .12s}
 .msg:hover .mact{opacity:1}
 .ma-btn{width:28px;height:28px;display:flex;align-items:center;justify-content:center;background:none;border:none;color:var(--tx3);cursor:pointer;border-radius:6px;transition:all .12s}
@@ -137,7 +150,7 @@ body{font-family:var(--f);background:var(--bg);color:var(--tx);display:flex;-web
 .save-box textarea{min-height:80px}
 .save-btns{display:flex;gap:8px;margin-top:14px;justify-content:flex-end}
 .save-res{margin-top:10px;padding:8px;border-radius:6px;font-size:11px;text-align:center}
-.save-res.ok{background:rgba(16,185,129,.1);color:var(--gn)}.save-res.err{background:rgba(239,68,68,.1);color:var(--rd)}
+.save-res.ok{background:rgba(106,173,58,.1);color:var(--gn)}.save-res.err{background:rgba(196,64,64,.1);color:var(--rd)}
 .ma-btn svg{width:14px;height:14px}
 .typing span{width:5px;height:5px;background:var(--tx3);border-radius:50%;display:inline-block;animation:tb 1.4s infinite;margin-right:3px}
 .typing span:nth-child(2){animation-delay:.2s}.typing span:nth-child(3){animation-delay:.4s}
@@ -152,10 +165,11 @@ body{font-family:var(--f);background:var(--bg);color:var(--tx);display:flex;-web
 .att-x{background:none;border:none;color:var(--tx3);cursor:pointer;font-size:13px;line-height:1;padding:0 1px}.att-x:hover{color:var(--rd)}
 .inp-area{padding:10px 28px 16px;display:flex;justify-content:center}
 .inp-wrap{max-width:800px;width:100%}
-.inp-box{display:flex;align-items:flex-end;background:var(--sf2);border:1px solid var(--bd);border-radius:22px;padding:6px 10px 6px 16px;transition:border-color .2s,box-shadow .2s}
-.inp-box:focus-within{border-color:rgba(124,58,237,.35);box-shadow:0 0 0 3px rgba(124,58,237,.08),0 0 30px rgba(124,58,237,.06),inset 0 0 20px rgba(124,58,237,.02)}
+.inp-box{display:flex;align-items:flex-end;background:rgba(136,176,96,.02);border:1px solid rgba(136,176,96,.12);border-radius:22px;padding:6px 10px 6px 16px;transition:border-color .2s,box-shadow .2s}
+.inp-box:focus-within{border-color:rgba(136,176,96,.35);box-shadow:0 0 0 3px rgba(136,176,96,.06),0 0 20px rgba(136,176,96,.08),inset 0 0 20px rgba(136,176,96,.02)}
 .inp-box textarea{flex:1;background:none;border:none;color:var(--tx);font-family:var(--f);font-size:14px;line-height:1.5;resize:none;outline:none;min-height:22px;max-height:180px;padding:4px 0}
 .inp-box textarea::placeholder{color:var(--tx3)}
+.inp-box textarea{caret-color:var(--ac)}
 .ib{width:32px;height:32px;display:flex;align-items:center;justify-content:center;border:none;border-radius:50%;cursor:pointer;transition:all .12s;flex-shrink:0}
 .ib svg{width:16px;height:16px}
 .ib.at{background:none;color:var(--tx3);margin-right:2px}.ib.at:hover{color:var(--tx)}
@@ -163,7 +177,7 @@ body{font-family:var(--f);background:var(--bg);color:var(--tx);display:flex;-web
 .inp-ft{text-align:center;padding-top:6px;font-size:10px;color:var(--tx3);letter-spacing:.02em}
 
 .bp{overflow-y:auto;padding:20px}
-.pn.on.bp{display:flex;flex-direction:column;align-items:center}
+.pn.on.bp{display:flex;flex-direction:column;align-items:stretch}
 /* HECVAT migration panel */
 #migratePanel{padding:0}
 #migratePanel.on{position:absolute;inset:0;overflow-y:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 28px;box-sizing:border-box}
@@ -173,19 +187,27 @@ body{font-family:var(--f);background:var(--bg);color:var(--tx);display:flex;-web
 #migRes{margin-bottom:auto}
 #migratePanel .mf{display:grid;grid-template-columns:1fr 36px 1fr;align-items:center;gap:20px}
 #migratePanel .mfb{width:100%;transition:border-color .2s,background .2s,box-shadow .2s,transform .12s}
-#migratePanel .mfb:hover{box-shadow:0 0 0 3px rgba(124,58,237,.15)}
+#migratePanel .mfb:hover{box-shadow:0 0 0 3px rgba(136,176,96,.15)}
 #migratePanel .mfb:active{transform:scale(.985)}
-.no-top .top{display:none}
+.no-top .top{display:none}.no-top{background:var(--bg)}
 @keyframes migFade{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
 #migratePanel.on>#migForm{animation:migFade .32s cubic-bezier(.4,0,.2,1) both}
 #migPrg.vis{animation:migFade .25s cubic-bezier(.4,0,.2,1) both}
 #migRes.anim{animation:migFade .3s cubic-bezier(.4,0,.2,1) both}
 @keyframes shimPB{0%{background-position:200% 0}100%{background-position:-200% 0}}
-#migPrg.vis #migBar{background:linear-gradient(90deg,var(--ac) 0%,#a78bfa 50%,var(--ac) 100%);background-size:200%;animation:shimPB 1.5s linear infinite}
+#migPrg.vis #migBar{background:linear-gradient(90deg,var(--ac) 0%,#a4c878 50%,var(--ac) 100%);background-size:200%;animation:shimPB 1.5s linear infinite}
 /* Upload loading states */
-.dz.uploading{pointer-events:none;border-color:var(--ac);background:var(--ac3)}.dz.uploading .di,.dz.uploading>p,.dz.uploading .sup,.dz.uploading .fn{display:none}.dz-spin{width:24px;height:24px;border:2px solid rgba(124,58,237,.2);border-top-color:var(--ac);border-radius:50%;animation:sp .6s linear infinite;margin:0 auto 8px;display:none}.dz.uploading .dz-spin{display:block}.dz.uploading .dz-ldtxt{display:block!important}.mfb.uploading{border-color:var(--ac)!important;pointer-events:none}.mfb.uploading .mn2{color:var(--ac)}.bb.running{opacity:.7;cursor:not-allowed;pointer-events:none}
-.bi{max-width:680px;width:100%}
-.bc{background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);padding:20px;margin-bottom:14px}
+.dz.uploading{pointer-events:none;border-color:var(--ac);background:var(--ac3)}.dz.uploading .di,.dz.uploading>p,.dz.uploading .sup,.dz.uploading .fn{display:none}.dz-spin{width:24px;height:24px;border:2px solid rgba(136,176,96,.2);border-top-color:var(--ac);border-radius:50%;animation:sp .6s linear infinite;margin:0 auto 8px;display:none}.dz.uploading .dz-spin{display:block}.dz.uploading .dz-ldtxt{display:block!important}.mfb.uploading{border-color:var(--ac)!important;pointer-events:none}.mfb.uploading .mn2{color:var(--ac)}.bb.running{opacity:.7;cursor:not-allowed;pointer-events:none}
+.btn-spin{display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:sp .6s linear infinite;vertical-align:-1px}
+.imp-loading{text-align:center;padding:28px 20px;border:1px solid var(--ac);border-radius:10px;background:var(--sf);margin-top:8px}
+.imp-spin{width:32px;height:32px;border:3px solid rgba(136,176,96,.2);border-top-color:var(--ac);border-radius:50%;animation:sp .7s linear infinite;margin:0 auto 12px}
+.imp-lt{font-size:14px;font-weight:600;color:var(--tx);margin-bottom:12px}
+.imp-pb{width:100%;height:6px;background:var(--sf2);border-radius:3px;overflow:hidden;margin-bottom:8px}
+.imp-pf{height:100%;background:var(--ac);border-radius:3px;width:0;transition:width .3s ease}
+.imp-ps{font-size:11px;color:var(--tx2)}
+.isuc{text-align:center;padding:28px 20px;border:1px solid var(--gn);border-radius:10px;background:rgba(106,173,58,.06)}
+.bi{max-width:680px;width:100%;margin:0 auto}
+.bc{background:var(--sf);border:1px solid rgba(136,176,96,.08);border-radius:var(--r);padding:20px;margin-bottom:14px;box-shadow:0 0 15px rgba(136,176,96,.02)}
 .bc h2{font-size:14px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px}
 .step{background:var(--ac);color:#fff;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0}
 .dz{border:2px dashed var(--bd);border-radius:var(--r);padding:32px;text-align:center;cursor:pointer;transition:all .2s}
@@ -197,12 +219,13 @@ body{font-family:var(--f);background:var(--bg);color:var(--tx);display:flex;-web
 .fg{display:flex;flex-direction:column;gap:4px}
 .fg label{font-size:11px;font-weight:500;color:var(--tx3)}
 .bsl{background:var(--sb);border:1px solid var(--bd);border-radius:7px;padding:8px 10px;color:var(--tx);font-family:var(--f);font-size:12px;outline:none}.bsl:focus{border-color:var(--ac)}
-.bb{background:var(--ac);color:#fff;border:none;border-radius:8px;padding:9px 20px;font-family:var(--f);font-size:13px;font-weight:600;cursor:pointer;transition:opacity .12s}
+.bb{background:var(--ac);color:#0a0f0a;border:none;border-radius:6px;padding:9px 20px;font-family:var(--f);font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;box-shadow:0 0 12px rgba(136,176,96,.2)}
+.bb:hover{box-shadow:0 0 20px rgba(136,176,96,.4),0 0 40px rgba(136,176,96,.15)}
 .bb:hover{opacity:.9}.bb:disabled{opacity:.35;cursor:not-allowed}
-.bb.sec{background:var(--sf2);border:1px solid var(--bd)}.bb.dl{background:var(--gn)}
+.bb.sec{background:transparent;border:1px solid var(--ac);color:var(--ac);box-shadow:none}.bb.sec:hover{background:rgba(136,176,96,.08);box-shadow:0 0 12px rgba(136,176,96,.15)}.bb.dl{background:var(--gn)}
 .prg{display:none}.prg.vis{display:block}
 .pb{background:var(--sb);border-radius:20px;height:5px;overflow:hidden;margin-bottom:8px}
-.pf{background:var(--ac);height:100%;width:0%;border-radius:20px;transition:width .4s}
+.pf{background:var(--ac);height:100%;width:0%;border-radius:20px;transition:width .4s;box-shadow:0 0 8px rgba(136,176,96,.4)}
 .pt{font-size:11px;color:var(--tx2)}
 .pl{background:var(--sb);border-radius:6px;padding:8px;margin-top:8px;max-height:100px;overflow-y:auto;font-family:var(--m);font-size:10px;color:var(--tx3);line-height:1.8}
 .res{display:none}.res.vis{display:block}
@@ -214,9 +237,9 @@ body{font-family:var(--f);background:var(--bg);color:var(--tx);display:flex;-web
 table{width:100%;border-collapse:collapse;font-size:11px}
 thead th{background:var(--sb);padding:8px 10px;text-align:left;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--tx3);border-bottom:1px solid var(--bd)}
 tbody td{padding:8px 10px;border-bottom:1px solid var(--bd);vertical-align:top}
-tbody tr:last-child td{border:none}tbody tr:hover{background:rgba(139,92,246,.03)}
+tbody tr:last-child td{border:none}tbody tr:hover{background:rgba(136,176,96,.03)}
 .badge{display:inline-block;padding:2px 7px;border-radius:12px;font-size:9px;font-weight:600;text-transform:uppercase}
-.badge.high{background:rgba(16,185,129,.12);color:var(--gn)}.badge.medium{background:rgba(245,158,11,.12);color:var(--yl)}.badge.low{background:rgba(239,68,68,.12);color:var(--rd)}.badge.none{background:rgba(106,106,106,.15);color:var(--tx3)}
+.badge.high{background:rgba(106,173,58,.12);color:var(--gn)}.badge.medium{background:rgba(200,168,50,.12);color:var(--yl)}.badge.low{background:rgba(196,64,64,.12);color:var(--rd)}.badge.none{background:rgba(106,106,106,.15);color:var(--tx3)}
 .fb{display:flex;gap:4px;margin-bottom:12px}
 .fbtn{background:var(--sb);border:1px solid var(--bd);color:var(--tx3);padding:4px 10px;border-radius:14px;font-size:10px;font-weight:500;cursor:pointer;font-family:var(--f);transition:all .12s}
 .fbtn.on{background:var(--ac);border-color:var(--ac);color:#fff}
@@ -230,13 +253,13 @@ tbody tr:last-child td{border:none}tbody tr:hover{background:rgba(139,92,246,.03
 .mb .sources-section li{font-size:12px;color:var(--tx2);padding:6px 10px;display:flex;align-items:center;gap:8px;line-height:1.3;border-radius:6px;transition:all .15s;cursor:pointer;position:relative}
 .mb .sources-section li:hover{background:rgba(255,255,255,.04);color:var(--tx)}
 .mb .sources-section li::before{content:'';width:7px;height:7px;border-radius:50%;flex-shrink:0}
-.mb .sources-section li.src-confluence::before{background:#5ba3fc;box-shadow:0 0 6px rgba(91,163,252,.4)}
-.mb .sources-section li.src-local::before{background:var(--gn);box-shadow:0 0 6px rgba(16,185,129,.4)}
-.mb .sources-section li.src-jira::before{background:#4d8eff;box-shadow:0 0 6px rgba(77,142,255,.4)}
-.mb .sources-section li.src-policy::before{background:var(--yl);box-shadow:0 0 6px rgba(245,158,11,.4)}
+.mb .sources-section li.src-confluence::before{background:#6898b8;box-shadow:0 0 6px rgba(104,152,184,.4)}
+.mb .sources-section li.src-local::before{background:var(--gn);box-shadow:0 0 6px rgba(106,173,58,.4)}
+.mb .sources-section li.src-jira::before{background:#5a80a8;box-shadow:0 0 6px rgba(90,128,168,.4)}
+.mb .sources-section li.src-policy::before{background:var(--yl);box-shadow:0 0 6px rgba(200,168,50,.4)}
 .mb .sources-section li.src-general::before{background:var(--tx3)}
 .mb .sources-section li a{color:var(--ac2);text-decoration:none;transition:color .15s;display:inline}
-.mb .sources-section li a:hover{color:#c4b5fd;text-decoration:underline}
+.mb .sources-section li a:hover{color:#c8dca8;text-decoration:underline}
 .mb .sources-section li a::after{content:' \2197';font-size:9px;opacity:.5}
 .ch2{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}.ch2 h2{font-size:16px;font-weight:600}
 .cnav{display:flex;align-items:center;gap:10px}
@@ -250,7 +273,7 @@ tbody tr:last-child td{border:none}tbody tr:hover{background:rgba(139,92,246,.03
 .cd.om{background:var(--sb);opacity:.35}.cd.tod{box-shadow:inset 0 0 0 2px var(--ac);background:var(--ac3)}
 .cdn{font-size:11px;font-weight:600;color:var(--tx2);margin-bottom:4px;padding:1px 0}.cd.tod .cdn{color:var(--ac);font-weight:700}
 .ct{display:flex;align-items:center;gap:4px;padding:3px 6px;margin-bottom:2px;border-radius:5px;font-size:10px;font-weight:600;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:all .15s;letter-spacing:.01em}.ct:hover{transform:translateX(2px);filter:brightness(1.15)}
-.ct.sd{background:rgba(16,185,129,.15);color:#6ee7b7;border-left:3px solid var(--gn)}.ct.sp{background:rgba(245,158,11,.15);color:#fcd34d;border-left:3px solid var(--yl)}.ct.st{background:rgba(59,130,246,.15);color:#93c5fd;border-left:3px solid var(--bl)}
+.ct.sd{background:rgba(106,173,58,.15);color:#8cb870;border-left:3px solid var(--gn)}.ct.sp{background:rgba(200,168,50,.15);color:#c8a850;border-left:3px solid var(--yl)}.ct.st{background:rgba(80,144,184,.15);color:#7898b0;border-left:3px solid var(--bl)}
 .cd-we{background:var(--sb)}.cdh-we{color:var(--tx3);opacity:.7}
 .cmod{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;align-items:center;justify-content:center}.cmod.vis{display:flex}
 .cdet{background:var(--sf);border:1px solid var(--bd);border-radius:14px;padding:22px;max-width:400px;width:90%}
@@ -264,10 +287,10 @@ tbody tr:last-child td{border:none}tbody tr:hover{background:rgba(139,92,246,.03
 .ipe{padding:10px;border-bottom:1px solid var(--bd)}.ipe:last-child{border:none}
 .ipe textarea{width:100%;background:var(--sb);border:1px solid var(--bd);border-radius:5px;padding:6px;color:var(--tx);font-family:var(--f);font-size:12px;resize:vertical;min-height:36px;outline:none}
 .ipe label{font-size:10px;color:var(--tx3);display:block;margin-bottom:3px}
-.isuc{background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.25);border-radius:8px;padding:14px;text-align:center;color:var(--gn)}
+.isuc{background:rgba(106,173,58,.08);border:1px solid rgba(106,173,58,.25);border-radius:8px;padding:14px;text-align:center;color:var(--gn)}
 .mf{display:grid;grid-template-columns:1fr 36px 1fr;gap:10px;align-items:center;margin-bottom:14px}
 .mfb{border:2px dashed var(--bd);border-radius:8px;padding:16px;text-align:center;cursor:pointer;transition:all .2s;min-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center}
-.mfb:hover,.mfb.over{border-color:var(--ac);background:var(--ac3)}.mfb.ld{border-color:var(--gn);border-style:solid;background:rgba(16,185,129,.04)}
+.mfb:hover,.mfb.over{border-color:var(--ac);background:var(--ac3)}.mfb.ld{border-color:var(--gn);border-style:solid;background:rgba(106,173,58,.04)}
 .mfb .ml{font-size:10px;color:var(--tx3);margin-bottom:4px;text-transform:uppercase;font-weight:500}
 .mfb .mn2{font-size:12px;font-weight:600;color:var(--tx)}.mfb .mc2{font-size:10px;color:var(--tx2);margin-top:3px}
 .mfb input[type="file"]{display:none}
@@ -280,14 +303,14 @@ tbody tr:last-child td{border:none}tbody tr:hover{background:rgba(139,92,246,.03
 .tk-item{display:flex;align-items:flex-start;gap:8px;padding:9px 10px;border-radius:8px;cursor:pointer;transition:all .15s;margin-bottom:3px;text-decoration:none;color:var(--tx);border-left:3px solid transparent}
 .tk-item:hover{background:var(--sb-h);border-left-color:var(--bd2)}
 .tk-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:5px;box-shadow:0 0 6px currentColor}
-.tk-dot.done{background:var(--gn);color:rgba(16,185,129,.6)}.tk-dot.prog{background:var(--yl);color:rgba(245,158,11,.6)}.tk-dot.todo{background:var(--bl);color:rgba(59,130,246,.6)}
+.tk-dot.done{background:var(--gn);color:rgba(106,173,58,.6)}.tk-dot.prog{background:var(--yl);color:rgba(200,168,50,.6)}.tk-dot.todo{background:var(--bl);color:rgba(80,144,184,.6)}
 .tk-key{font-size:11px;font-weight:700;color:var(--ac);white-space:nowrap;letter-spacing:.02em}
 .tk-sum{font-size:11px;color:var(--tx2);line-height:1.35;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical}
 .tk-meta{font-size:9px;color:var(--tx3);margin-top:3px;display:flex;gap:8px;align-items:center}
 .tk-status{font-size:9px;padding:2px 6px;border-radius:8px;font-weight:600;display:inline-block}
-.tk-status.done{background:rgba(16,185,129,.12);color:var(--gn)}
-.tk-status.prog{background:rgba(245,158,11,.12);color:var(--yl)}
-.tk-status.todo{background:rgba(59,130,246,.12);color:var(--bl)}
+.tk-status.done{background:rgba(106,173,58,.12);color:var(--gn)}
+.tk-status.prog{background:rgba(200,168,50,.12);color:var(--yl)}
+.tk-status.todo{background:rgba(80,144,184,.12);color:var(--bl)}
 .tk-loading{padding:20px;text-align:center;color:var(--tx3);font-size:11px}
 .tk-item.active{background:var(--ac3);border-left:3px solid var(--ac)}
 /* Ticket detail panel */
@@ -296,9 +319,9 @@ tbody tr:last-child td{border:none}tbody tr:hover{background:rgba(139,92,246,.03
 .tkd-title{font-size:15px;font-weight:600;line-height:1.3;margin-bottom:10px}
 .tkd-badges{display:flex;gap:6px;flex-wrap:wrap}
 .tkd-badge{font-size:10px;padding:3px 8px;border-radius:6px;font-weight:600}
-.tkd-badge.st-done{background:rgba(16,185,129,.12);color:var(--gn)}
-.tkd-badge.st-prog{background:rgba(245,158,11,.12);color:var(--yl)}
-.tkd-badge.st-todo{background:rgba(59,130,246,.12);color:var(--bl)}
+.tkd-badge.st-done{background:rgba(106,173,58,.12);color:var(--gn)}
+.tkd-badge.st-prog{background:rgba(200,168,50,.12);color:var(--yl)}
+.tkd-badge.st-todo{background:rgba(80,144,184,.12);color:var(--bl)}
 .tkd-badge.pri{background:var(--sf);color:var(--tx2)}
 .tkd-body{padding:14px 16px;flex:1;overflow-y:auto}
 .tkd-section{margin-bottom:14px}
@@ -328,44 +351,46 @@ tbody tr:last-child td{border:none}tbody tr:hover{background:rgba(139,92,246,.03
 .kb-card:hover{border-color:var(--bd2);transform:translateY(-1px);box-shadow:0 2px 8px rgba(0,0,0,.2)}
 .kb-card-title{font-size:13px;font-weight:500;line-height:1.35;margin-bottom:6px;color:var(--tx);letter-spacing:-.01em}
 .kb-card-labels{display:flex;flex-wrap:wrap;gap:3px;margin-bottom:6px}
-.kb-card-label{font-size:8px;padding:2px 6px;border-radius:3px;background:rgba(124,58,237,.12);color:var(--ac2);font-weight:600;text-transform:uppercase;letter-spacing:.3px}
+.kb-card-label{font-size:8px;padding:2px 6px;border-radius:3px;background:rgba(136,176,96,.12);color:var(--ac2);font-weight:600;text-transform:uppercase;letter-spacing:.3px}
 .kb-card-footer{display:flex;align-items:center;justify-content:space-between;font-size:10px;color:var(--tx3)}
 .kb-card-key{font-weight:600;color:var(--tx3)}
 .kb-card-due{display:flex;align-items:center;gap:3px}
-.kb-card-due.overdue{color:var(--rd);background:rgba(239,68,68,.1);padding:1px 5px;border-radius:4px;font-weight:600}
+.kb-card-due.overdue{color:var(--rd);background:rgba(196,64,64,.1);padding:1px 5px;border-radius:4px;font-weight:600}
 .kb-card-avatar{width:22px;height:22px;border-radius:50%;background:var(--sf2);display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:var(--tx2)}
 .kb-card-bottom{display:flex;align-items:center;justify-content:space-between;margin-top:4px}
 .kb-card-pri{font-size:9px;color:var(--tx3)}
 
-/* Theme toggle */
-.theme-row{display:flex;align-items:center;gap:4px;padding:6px 0 0}
-.theme-btn{flex:1;padding:5px;background:var(--sf2);border:1px solid var(--bd);border-radius:5px;color:var(--tx3);font-family:var(--f);font-size:9px;cursor:pointer;text-align:center;transition:all .15s}
-.theme-btn:hover{color:var(--tx2)}
-.theme-btn.active{background:var(--ac3);border-color:var(--ac);color:var(--ac)}
+/* Theme toggle (top bar) */
+.theme-toggle{display:flex;align-items:center;background:var(--sf2);border:1px solid var(--bd);border-radius:20px;padding:2px;gap:1px;margin-left:4px}
+.theme-toggle button{width:28px;height:28px;display:flex;align-items:center;justify-content:center;background:none;border:none;border-radius:50%;color:var(--tx3);cursor:pointer;transition:all .2s;position:relative}
+.theme-toggle button:hover{color:var(--tx)}
+.theme-toggle button.active{background:var(--ac);color:#fff;box-shadow:0 1px 6px rgba(136,176,96,.35)}
+.theme-toggle button svg{width:15px;height:15px}
 
 /* Light theme */
-html.light{--sb:#f7f7f8;--sb-h:#ececed;--sb-b:#e0e0e0;--bg:#fff;--sf:#f9f9fa;--sf2:#f2f2f3;--sf3:#e8e8e9;--bd:#e2e2e3;--bd2:#d0d0d0;--tx:#1a1a1a;--tx2:#444;--tx3:#888;--ac:#7c3aed;--ac2:#6d28d9;--ac3:rgba(124,58,237,.06);--gn:#059669;--yl:#d97706;--rd:#dc2626;--bl:#2563eb}
+html.light{--sb:#f2f4ee;--sb-h:#e6eade;--sb-b:#dae0d2;--bg:#f6f8f2;--sf:#f0f3ea;--sf2:#eaede4;--sf3:#dfe4d8;--bd:#c4ccb8;--bd2:#aeb8a4;--tx:#1c2618;--tx2:#4a5a3c;--tx3:#7a8a6c;--ac:#5a8030;--ac2:#4a6a28;--ac3:rgba(90,128,48,.06);--gn:#5a8030;--yl:#b89020;--rd:#b83030;--bl:#3a6898}
 html.light body{background:var(--bg);background-image:none;color:var(--tx)}
+html.light body::after{display:none}
 html.light .sb{border-right-color:var(--bd);background:var(--sb);backdrop-filter:none}
 html.light .sb-brand-text{color:#111}
 html.light .sb-brand-sub{color:#888}
 html.light .kb-card{background:#fff}
 html.light .mb{color:#222}
-html.light .mb code{background:#f3f0ff;color:#6d28d9;border-color:#e8e0ff}
+html.light .mb code{background:#f0f5ea;color:#4a6a30;border-color:#dce8d0}
 html.light .mb pre{background:#fafafa;border-color:#e5e5e5}
 html.light .mb pre code{color:#333}
 html.light .mb strong{color:#111}
 html.light .mb h1{color:#111;border-bottom-color:#eee}
 html.light .mb h2{color:var(--ac)}
 html.light .mb li{color:#333}
-html.light .mb th{background:rgba(124,58,237,.04);color:var(--ac)}
+html.light .mb th{background:rgba(136,176,96,.04);color:var(--ac)}
 html.light .mb td{color:#333}
-html.light .mb blockquote{background:rgba(124,58,237,.03);color:#444}
+html.light .mb blockquote{background:rgba(136,176,96,.03);color:#444}
 html.light .msg{border-bottom-color:rgba(0,0,0,.05)}
 html.light .msg[data-role="user"]{background:rgba(0,0,0,.02);border-radius:8px;padding-left:16px;margin:4px 0}
 html.light .mr{color:#888}
 html.light .sug{background:#fff;border-color:#e5e5e5;color:#444}
-html.light .sug:hover{background:rgba(124,58,237,.03);border-color:rgba(124,58,237,.2);color:#222}
+html.light .sug:hover{background:rgba(136,176,96,.03);border-color:rgba(136,176,96,.2);color:#222}
 html.light .sources-section{background:#f9f9fa;border-color:#e5e5e5}
 html.light .sources-section strong{color:#666}
 html.light .sources-section li{color:#444}
@@ -374,14 +399,14 @@ html.light .sources-section li a{color:var(--ac)}
 html.light .inp-box{background:#f5f5f6;border-color:#e0e0e0}
 html.light .inp-box textarea{color:#222}
 html.light .inp-box textarea::placeholder{color:#aaa}
-html.light .inp-box:focus-within{border-color:rgba(124,58,237,.3);box-shadow:0 0 0 3px rgba(124,58,237,.06)}
+html.light .inp-box:focus-within{border-color:rgba(136,176,96,.3);box-shadow:0 0 0 3px rgba(136,176,96,.06)}
 html.light .inp-ft{color:#aaa}
 html.light .bc{background:#fff;border-color:#e5e5e5}
 html.light .bc h2{color:#222}
 html.light .dz{border-color:#d0d0d0}
 html.light .dz p{color:#666}
 html.light .dz .sup{color:#999}
-html.light .dz:hover{border-color:var(--ac);background:rgba(124,58,237,.03)}
+html.light .dz:hover{border-color:var(--ac);background:rgba(136,176,96,.03)}
 html.light .sb-nav{border-bottom-color:#e8e8e8}
 html.light .sb-nav-item{color:#666}
 html.light .sb-nav-item:hover{background:#efefef;color:#333}
@@ -397,15 +422,15 @@ html.light .sb-sel{background:#fff;border-color:#e0e0e0;color:#222}
 html.light .sb-foot label{color:#888}
 html.light .api-row{color:#888}
 html.light .pill{backdrop-filter:none}
-html.light .pill.cf{background:rgba(29,122,252,.08);color:#2563eb}
-html.light .pill.jr{background:rgba(0,101,255,.08);color:#1d4ed8}
-html.light .pill.lc{background:rgba(5,150,105,.08);color:#059669}
+html.light .pill.cf{background:rgba(58,104,152,.08);color:#3a6898}
+html.light .pill.jr{background:rgba(58,104,152,.08);color:#3a6898}
+html.light .pill.lc{background:rgba(90,128,48,.08);color:#4a6a28}
 html.light .p-sel{background:#fff;border-color:#e0e0e0;color:#333}
 html.light .top{border-bottom-color:#e5e5e5}
 html.light .ham{color:#666}
 html.light .ham:hover{background:#f0f0f0}
-html.light .sb-logo{box-shadow:0 0 12px rgba(124,58,237,.2)}
-html.light .w-logo{box-shadow:0 0 40px rgba(124,58,237,.15)}
+html.light .sb-logo{box-shadow:0 0 12px rgba(136,176,96,.2)}
+html.light .w-logo{box-shadow:0 0 40px rgba(136,176,96,.15)}
 html.light .welcome h2{color:#111}
 html.light .welcome p{color:#666}
 html.light .sts{color:var(--ac)}
@@ -429,11 +454,11 @@ html.light .cdn{color:#555}
 html.light .cdh{background:#f5f5f5;color:#888}
 html.light .ch2 h2{color:#222}
 html.light .cml{color:#222}
-html.light .ct.sd{background:rgba(5,150,105,.12);color:#047857;border-left-color:#059669}
-html.light .ct.sp{background:rgba(217,119,6,.12);color:#b45309;border-left-color:#d97706}
-html.light .ct.st{background:rgba(37,99,235,.12);color:#1d4ed8;border-left-color:#2563eb}
+html.light .ct.sd{background:rgba(90,128,48,.12);color:#3a5a20;border-left-color:#5a8030}
+html.light .ct.sp{background:rgba(184,144,32,.12);color:#8a6a18;border-left-color:#b89020}
+html.light .ct.st{background:rgba(58,104,152,.12);color:#2a5878;border-left-color:#3a6898}
 html.light .cd-we{background:#f5f5f5}
-html.light .cd.tod{background:rgba(124,58,237,.04)}
+html.light .cd.tod{background:rgba(136,176,96,.04)}
 /* Board light */
 html.light .kb-col{background:#f9f9fa;border-color:#e5e5e5}
 html.light .kb-hd{color:#666;border-bottom-color:#e5e5e5}
@@ -450,15 +475,79 @@ html.light .itb:hover{border-color:#ccc}
 html.light .itb .tt{color:#222}
 html.light .itb .td{color:#888}
 html.light .dp{background:#f5f5f5;color:#555}
-/* Theme buttons light */
-html.light .theme-btn{background:#fff;border-color:#e0e0e0;color:#888}
-html.light .theme-btn.active{background:rgba(124,58,237,.06);border-color:var(--ac);color:var(--ac)}
+/* Theme toggle light */
+html.light .theme-toggle{background:#f0f0f1;border-color:#e0e0e0}
+html.light .theme-toggle button{color:#999}
+html.light .theme-toggle button:hover{color:#555}
+html.light .theme-toggle button.active{background:var(--ac);color:#fff}
 html.light .api-in{background:#fff;border-color:#e0e0e0;color:#222}
 html.light ::-webkit-scrollbar-thumb{background:#d0d0d0}
 /* Filter selects light */
 html.light .cfl select{background:#fff;border-color:#e0e0e0;color:#333}
 html.light .fbtn{background:#fff;border-color:#e0e0e0;color:#888}
 html.light .fbtn.on{background:var(--ac);border-color:var(--ac);color:#fff}
+
+/* Admin panel */
+.admin-tabs{display:flex;gap:2px;background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:3px;margin-bottom:18px;overflow-x:auto}
+.admin-tab{padding:8px 16px;background:none;border:none;border-radius:6px;color:var(--tx3);font-family:var(--f);font-size:12px;font-weight:500;cursor:pointer;transition:all .2s;white-space:nowrap}
+.admin-tab:hover{color:var(--ac2)}
+.admin-tab.on{background:var(--ac);color:#0a0f0a;box-shadow:0 0 12px rgba(136,176,96,.3)}
+.admin-section{display:none}.admin-section.on{display:block}
+.admin-card{margin-bottom:16px}
+.admin-card h2{font-size:15px;font-weight:600}
+.admin-desc{color:var(--tx2);font-size:12px;margin-bottom:14px;line-height:1.4}
+.admin-form{display:flex;flex-direction:column;gap:14px}
+.admin-field{display:flex;flex-direction:column;gap:3px}
+.admin-field>label{font-size:11px;font-weight:600;color:var(--tx2);text-transform:uppercase;letter-spacing:.3px}
+.admin-field .req{color:var(--rd);font-weight:700}
+.admin-input{width:100%;padding:9px 12px;background:var(--sf2);border:1px solid var(--bd);border-radius:7px;color:var(--tx);font-family:var(--f);font-size:13px;outline:none;transition:border-color .2s}
+.admin-input:focus{border-color:var(--ac);box-shadow:0 0 8px rgba(136,176,96,.1)}
+.admin-input::placeholder{color:var(--tx3)}
+.admin-hint{font-size:10px;color:var(--tx3);line-height:1.3}
+.admin-radio-group{display:flex;gap:16px;padding:4px 0}
+.admin-radio{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--tx);cursor:pointer}
+.admin-radio input{display:none}
+.admin-radio-dot{width:16px;height:16px;border-radius:50%;border:2px solid var(--bd2);display:flex;align-items:center;justify-content:center;transition:all .15s;flex-shrink:0}
+.admin-radio input:checked+.admin-radio-dot{border-color:var(--ac);background:var(--ac);box-shadow:inset 0 0 0 3px var(--sf)}
+.admin-check{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--tx);cursor:pointer}
+.admin-check input{display:none}
+.admin-check-box{width:18px;height:18px;border-radius:4px;border:2px solid var(--bd2);display:flex;align-items:center;justify-content:center;transition:all .15s;flex-shrink:0}
+.admin-check input:checked+.admin-check-box{background:var(--ac);border-color:var(--ac)}
+.admin-check input:checked+.admin-check-box::after{content:'✓';color:#fff;font-size:11px;font-weight:700}
+.admin-actions{display:flex;gap:8px;margin-top:4px}
+.admin-result{margin-top:8px;padding:8px 12px;border-radius:6px;font-size:12px;display:flex;align-items:center;gap:6px}
+.admin-result.ok{background:rgba(106,173,58,.1);color:var(--gn);border:1px solid rgba(106,173,58,.2)}
+.admin-result.err{background:rgba(196,64,64,.1);color:var(--rd);border:1px solid rgba(196,64,64,.2)}
+.admin-result.warn{background:rgba(200,168,50,.1);color:var(--yl);border:1px solid rgba(200,168,50,.2)}
+.admin-details{margin-top:12px;border:1px solid var(--bd);border-radius:7px;overflow:hidden}
+.admin-details summary{padding:10px 14px;font-size:12px;font-weight:600;color:var(--tx2);cursor:pointer;background:var(--sf2);transition:background .15s}
+.admin-details summary:hover{background:var(--sf3)}
+.admin-details[open] summary{border-bottom:1px solid var(--bd)}
+.admin-steps{padding:12px 14px 12px 28px;font-size:12px;color:var(--tx2);line-height:1.8}
+.admin-steps a{color:var(--ac2);text-decoration:none}.admin-steps a:hover{text-decoration:underline}
+.admin-note{padding:0 14px 12px;font-size:10px;color:var(--tx3);font-style:italic}
+.admin-stat{background:var(--sf2);border:1px solid var(--bd);border-radius:8px;padding:14px;text-align:center}
+.admin-stat-n{font-size:24px;font-weight:700;color:var(--ac);line-height:1}
+.admin-stat-l{font-size:10px;color:var(--tx3);margin-top:4px;text-transform:uppercase;letter-spacing:.3px}
+.admin-status-row{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid var(--bd);font-size:13px}
+.admin-status-row:last-child{border:none}
+.admin-status-label{color:var(--tx2);font-weight:500}
+.admin-status-badge{font-size:11px;font-weight:600;padding:3px 10px;border-radius:12px;background:var(--sf2);color:var(--tx3)}
+.admin-status-badge.ok{background:rgba(136,176,96,.1);color:var(--gn);text-shadow:0 0 4px rgba(136,176,96,.3)}
+.admin-status-badge.err{background:rgba(196,64,64,.1);color:var(--rd);text-shadow:0 0 4px rgba(196,64,64,.25)}
+.admin-status-badge.warn{background:rgba(200,168,50,.1);color:var(--yl);text-shadow:0 0 4px rgba(200,168,50,.25)}
+/* Light theme admin overrides */
+html.light .admin-tabs{background:#f2f2f3;border-color:#e5e5e5}
+html.light .admin-tab{color:#888}
+html.light .admin-tab:hover{color:#555}
+html.light .admin-tab.on{background:var(--ac);color:#fff}
+html.light .admin-input{background:#fff;border-color:#e0e0e0;color:#222}
+html.light .admin-input::placeholder{color:#bbb}
+html.light .admin-radio{color:#333}
+html.light .admin-check{color:#333}
+html.light .admin-stat{background:#fff;border-color:#e5e5e5}
+html.light .admin-details summary{background:#f5f5f5}
+html.light .admin-status-row{border-bottom-color:#f0f0f0}
 
 /* Calendar maximize */
 .cal-max #calTicketList{display:none}
@@ -468,12 +557,23 @@ html.light .fbtn.on{background:var(--ac);border-color:var(--ac);color:#fff}
 .cal-max .cg{font-size:11px}
 .cal-max .ct{font-size:11px;padding:4px 8px}
 @media(max-width:768px){.sb{position:fixed;height:100%}.sb.shut{transform:translateX(-100%)}.sugs,.itg{grid-template-columns:1fr}.fr,.sr{grid-template-columns:1fr 1fr}.top-r .pill{display:none}#calTicketList{display:none!important}}
+/* Global task bar */
+.gtb{position:fixed;bottom:0;left:var(--sb-w,260px);right:0;z-index:900;display:none;background:var(--sf);border-top:1px solid var(--ac);padding:6px 16px;font-size:12px;transition:left .25s}
+.gtb.vis{display:flex;align-items:center;gap:12px}
+.gtb-tasks{display:flex;gap:10px;flex:1;overflow-x:auto}
+.gtb-task{display:flex;align-items:center;gap:8px;padding:4px 10px;border-radius:6px;background:rgba(136,176,96,.08);border:1px solid rgba(136,176,96,.2);cursor:pointer;white-space:nowrap;transition:background .15s}
+.gtb-task:hover{background:rgba(136,176,96,.15)}
+.gtb-task .gtb-spin{width:12px;height:12px;border:2px solid rgba(136,176,96,.3);border-top-color:var(--ac);border-radius:50%;animation:sp .7s linear infinite;flex-shrink:0}
+.gtb-task .gtb-done{color:var(--gn);font-size:14px}
+.gtb-task .gtb-err{color:var(--rd);font-size:14px}
+.gtb-label{color:var(--tx)}
+.gtb-pct{color:var(--ac);font-weight:600;min-width:32px;text-align:right}
 </style>
 </head>
 <body>
 <aside class="sb" id="sb">
 <div class="sb-top">
-<div class="sb-brand"><div class="sb-logo"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><div><div class="sb-brand-text">Security QA</div><div class="sb-brand-sub">Questionnaire Automator</div></div></div>
+<div class="sb-brand"><img class="sb-logo" src="logo.svg" alt="Logo"><div><div class="sb-brand-text">Security QA</div><div class="sb-brand-sub">Questionnaire Automator</div></div></div>
 <button class="new-btn" onclick="newChat()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>New Chat</button>
 <div class="sb-nav">
 <div class="sb-nav-item on" onclick="sw('chat',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>Chat</div>
@@ -481,44 +581,25 @@ html.light .fbtn.on{background:var(--ac);border-color:var(--ac);color:#fff}
 <div class="sb-nav-item" onclick="sw('calendar',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg>Jira</div>
 <div class="sb-nav-item" onclick="sw('import',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Import</div>
 <div class="sb-nav-item" onclick="sw('migrate',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>HECVAT</div>
+<div class="sb-nav-item" onclick="sw('admin',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>Admin</div>
 </div>
 </div>
 <div class="sb-hist" id="histList"><div class="sb-hist-label">Your chats</div></div>
 <div class="sb-foot">
-<label>AI Provider</label>
-<select class="sb-sel" id="aiProvider" onchange="chAIProvider(this.value)">
-  <option value="claude">Claude (Anthropic)</option>
-  <option value="openai">OpenAI (ChatGPT)</option>
-  <option value="gemini">Google Gemini</option>
-  <option value="cohere">Cohere</option>
-  <option value="huggingface">HuggingFace</option>
-</select>
-<label style="margin-top:8px;">Model</label>
+<label>Model</label>
 <select class="sb-sel" id="modelSelect" onchange="chModel(this.value)"><option value="claude-opus-4-20250514">Claude Opus 4</option><option value="claude-sonnet-4-20250514">Claude Sonnet 4</option><option value="claude-haiku-4-5-20251001">Claude Haiku 4.5</option></select>
-<div class="theme-row">
-<button class="theme-btn" onclick="setTheme('dark',this)" id="thDark">Dark</button>
-<button class="theme-btn" onclick="setTheme('light',this)" id="thLight">Light</button>
-<button class="theme-btn" onclick="setTheme('system',this)" id="thSys">Auto</button>
-</div>
-<div class="api-row" onclick="document.getElementById('apb').classList.toggle('open')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>API Key</div>
-<div class="api-box" id="apb" style="display:flex;flex-direction:column;gap:6px;">
-  <input type="password" class="api-in" id="apiKey" placeholder="sk-ant-...">
-  <button onclick="setAIKey()" style="background:var(--ac);border:none;color:#fff;padding:6px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;width:100%;">Save API Key</button>
-</div>
-<div class="api-row" onclick="document.getElementById('jrab').classList.toggle('open')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>Jira Auth</div>
-<div class="api-box" id="jrab" style="display:flex;flex-direction:column;gap:6px;">
-  <input type="text" class="api-in" id="jiraBase" placeholder="https://your-instance.atlassian.net">
-  <input type="email" class="api-in" id="jiraEmail" placeholder="your-email@company.com">
-  <input type="password" class="api-in" id="jiraToken" placeholder="API Token">
-  <button onclick="setJiraAuth()" style="background:var(--ac);border:none;color:#fff;padding:6px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;width:100%;">Connect Jira</button>
-  <div style="font-size:10px;color:var(--tx3);text-align:center;" id="jiraStatus">Not configured</div>
-</div>
 </div>
 </aside>
 <div class="mn">
-<div class="top"><div class="top-l"><button class="ham" onclick="document.getElementById('sb').classList.toggle('shut')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg></button></div><div class="top-r"><span class="pill cf"><span class="dot"></span>Confluence</span><span class="pill jr"><span class="dot"></span>Jira</span><span class="pill lc"><span class="dot"></span>Local</span><select class="p-sel" id="chatProduct"><option value="">All Products</option></select></div></div>
-<div class="pn on" id="chatPanel"><div class="ch-scroll" id="chScr"><div class="ch-inner" id="chMsg"><div class="welcome" id="wel"><div class="w-logo"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4" stroke-linecap="round" stroke-linejoin="round"/></svg></div><h2>Security Questionnaire Assistant</h2><p>Connected to Confluence, Jira, and your local answer bank. Ask anything about your security posture.</p><div class="sugs"><div class="sug" onclick="uSug(this)">What encryption do we use for data at rest and in transit?</div><div class="sug" onclick="uSug(this)">Show me open security questionnaire tickets in Jira</div><div class="sug" onclick="uSug(this)">Find our incident response policy on Confluence</div><div class="sug" onclick="uSug(this)">Draft a HECVAT answer about multi-factor authentication</div></div></div></div></div><div class="sts" id="chSts"><div class="spin"></div><span id="chStsTx">Searching...</span></div><div class="att-bar" id="chAtt"></div><div class="inp-area"><div class="inp-wrap"><div class="inp-box"><button class="ib at" onclick="document.getElementById('chFI').click()" title="Attach"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg></button><textarea id="chIn" placeholder="Ask anything" rows="1" onkeydown="chKey(event)" oninput="aRsz(this)"></textarea><button class="ib sd" id="chSnd" onclick="sendMsg()" title="Send"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 11l5-5 5 5M12 6v13"/></svg></button></div><div class="inp-ft" id="inFt"></div><input type="file" id="chFI" multiple accept=".xlsx,.xls,.csv,.pdf,.docx,.json,.txt,.md" style="display:none" onchange="hCF(this.files)"></div></div></div>
-<div class="pn bp" id="uploadPanel"><div class="bi"><div class="bc"><h2><span class="step">1</span>Upload Questionnaire</h2><div class="dz" id="dropZone"><div class="dz-spin"></div><p class="dz-ldtxt" style="display:none;color:var(--ac);font-size:12px;font-weight:500">Uploading...</p><div class="di">&#128196;</div><p>Drag & drop a file here, or click to browse</p><div class="sup">Excel, CSV, PDF, Word, JSON, Text</div><div class="fn" id="fileName"></div><input type="file" id="fileInput" accept=".xlsx,.xls,.csv,.pdf,.docx,.json,.txt,.md"></div></div><div class="bc" id="configCard" style="display:none"><h2><span class="step">2</span>Configure</h2><div id="fileTypeBadge" style="margin-bottom:10px"></div><div id="spreadsheetConfig"><div class="fr"><div class="fg"><label>Sheet</label><select class="bsl" id="sheetSelect"></select></div><div class="fg"><label>Product</label><select class="bsl" id="productSelect"><option value="">All</option></select></div></div><div class="fr"><div class="fg"><label>Question Column</label><select class="bsl" id="questionCol"></select></div><div class="fg"><label>ID Column</label><select class="bsl" id="idCol"></select></div></div><div id="previewSection" style="margin-top:10px"><label style="font-size:10px;color:var(--tx3);display:block;margin-bottom:4px">Preview</label><div class="tw"><table id="previewTable"></table></div></div></div><div id="documentConfig" style="display:none"><div class="fr"><div class="fg"><label>Product</label><select class="bsl" id="docProductSelect"><option value="">All</option></select></div><div class="fg" id="pageCountGroup" style="display:none"><label>Pages</label><input class="bsl" type="text" id="pageCount" disabled></div></div><label style="font-size:10px;color:var(--tx3);display:block;margin:6px 0 4px">Preview</label><div class="dp" id="docPreview"></div></div><div class="fr" style="margin-top:10px;border-top:1px solid var(--bd);padding-top:10px"><div class="fg"><label>Framework</label><select class="bsl" id="batchFramework" onchange="updBatchVer()"><option value="">None (Custom)</option></select></div><div class="fg"><label>Version</label><select class="bsl" id="batchVersion"><option value="">—</option></select></div></div><div style="display:flex;align-items:center;gap:8px;margin-top:8px"><input type="checkbox" id="autoSaveBank" checked style="accent-color:var(--ac)"><label for="autoSaveBank" style="font-size:11px;color:var(--tx2);cursor:pointer">Auto-save completed questionnaire to answer bank</label></div><div style="margin-top:14px;text-align:right"><button class="bb" id="processBtn" onclick="startProc()">Process Questionnaire</button></div></div><div class="bc prg" id="progressSection"><h2>Processing</h2><div class="pb"><div class="pf" id="progressBar"></div></div><div class="pt" id="progressText">Starting...</div><div class="pl" id="progressLog"></div></div><div class="bc res" id="resultsSection"><h2>Results</h2><div class="sr"><div class="sc t"><div class="n" id="statTotal">0</div><div class="l">Total</div></div><div class="sc h"><div class="n" id="statHigh">0</div><div class="l">High</div></div><div class="sc m"><div class="n" id="statMedium">0</div><div class="l">Medium</div></div><div class="sc w"><div class="n" id="statLow">0</div><div class="l">Review</div></div></div><div class="fb"><button class="fbtn on" onclick="fRes('all',this)">All</button><button class="fbtn" onclick="fRes('high',this)">High</button><button class="fbtn" onclick="fRes('medium',this)">Medium</button><button class="fbtn" onclick="fRes('low',this)">Low</button></div><div class="tw"><table><thead><tr><th>ID</th><th>Question</th><th>Answer</th><th>Source</th><th>Conf.</th></tr></thead><tbody id="resultsBody"></tbody></table></div><div class="abr"><button class="bb sec" onclick="resetUp()">New</button><button class="bb" onclick="saveProcToBank()" id="saveBankBtn" style="background:var(--gn)">Save to Bank</button><button class="bb dl" onclick="dlFile()">Download Excel</button></div></div></div></div>
+<div class="top"><div class="top-l"><button class="ham" onclick="document.getElementById('sb').classList.toggle('shut')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg></button></div><div class="top-r"><span class="pill cf"><span class="dot"></span>Confluence</span><span class="pill jr"><span class="dot"></span>Jira</span><span class="pill lc"><span class="dot"></span>Local</span><select class="p-sel" id="chatProduct"><option value="">All Products</option></select>
+<div class="theme-toggle">
+<button onclick="setTheme('dark',this)" id="thDark" title="Dark mode"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg></button>
+<button onclick="setTheme('light',this)" id="thLight" title="Light mode"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg></button>
+<button onclick="setTheme('system',this)" id="thSys" title="System theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></button>
+</div>
+</div></div>
+<div class="pn on" id="chatPanel"><div class="ch-scroll" id="chScr"><div class="ch-inner" id="chMsg"><div class="welcome" id="wel"><img class="w-logo" src="logo.svg" alt="Logo"><h2>Security Questionnaire Assistant</h2><p>Connected to Confluence, Jira, and your local answer bank. Ask anything about your security posture.</p><div class="sugs"><div class="sug" onclick="uSug(this)">What encryption do we use for data at rest and in transit?</div><div class="sug" onclick="uSug(this)">Show me open security questionnaire tickets in Jira</div><div class="sug" onclick="uSug(this)">Find our incident response policy on Confluence</div><div class="sug" onclick="uSug(this)">Draft a HECVAT answer about multi-factor authentication</div></div></div></div></div><div class="sts" id="chSts"><div class="spin"></div><span id="chStsTx">Searching...</span></div><div class="att-bar" id="chAtt"></div><div class="inp-area"><div class="inp-wrap"><div class="inp-box"><button class="ib at" onclick="document.getElementById('chFI').click()" title="Attach"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg></button><textarea id="chIn" placeholder="Ask anything" rows="1" onkeydown="chKey(event)" oninput="aRsz(this)"></textarea><button class="ib sd" id="chSnd" onclick="sendMsg()" title="Send"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 11l5-5 5 5M12 6v13"/></svg></button></div><div class="inp-ft" id="inFt"></div><input type="file" id="chFI" multiple accept=".xlsx,.xls,.csv,.pdf,.docx,.pptx,.json,.txt,.md,.html,.htm,.xml,.rtf" style="display:none" onchange="hCF(this.files)"></div></div></div>
+<div class="pn bp" id="uploadPanel"><div class="bi"><div class="bc"><h2><span class="step">1</span>Upload Questionnaire</h2><div class="dz" id="dropZone"><div class="dz-spin"></div><p class="dz-ldtxt" style="display:none;color:var(--ac);font-size:12px;font-weight:500">Uploading...</p><div class="di">&#128196;</div><p>Drag & drop a file here, or click to browse</p><div class="sup">Excel, CSV, PDF, Word, PowerPoint, JSON, Text, HTML, XML, RTF</div><div class="fn" id="fileName"></div><input type="file" id="fileInput" accept=".xlsx,.xls,.csv,.pdf,.docx,.pptx,.json,.txt,.md,.html,.htm,.xml,.rtf"></div></div><div class="bc" id="configCard" style="display:none"><h2><span class="step">2</span>Configure</h2><div id="fileTypeBadge" style="margin-bottom:10px"></div><div id="spreadsheetConfig"><div class="fr"><div class="fg"><label>Sheet</label><select class="bsl" id="sheetSelect"></select></div><div class="fg"><label>Product</label><select class="bsl" id="productSelect"><option value="">All</option></select></div></div><div class="fr"><div class="fg"><label>Question Column</label><select class="bsl" id="questionCol"></select></div><div class="fg"><label>ID Column</label><select class="bsl" id="idCol"></select></div></div><div id="previewSection" style="margin-top:10px"><label style="font-size:10px;color:var(--tx3);display:block;margin-bottom:4px">Preview</label><div class="tw"><table id="previewTable"></table></div></div></div><div id="documentConfig" style="display:none"><div class="fr"><div class="fg"><label>Product</label><select class="bsl" id="docProductSelect"><option value="">All</option></select></div><div class="fg" id="pageCountGroup" style="display:none"><label>Pages</label><input class="bsl" type="text" id="pageCount" disabled></div></div><label style="font-size:10px;color:var(--tx3);display:block;margin:6px 0 4px">Preview</label><div class="dp" id="docPreview"></div></div><div class="fr" style="margin-top:10px;border-top:1px solid var(--bd);padding-top:10px"><div class="fg"><label>Framework</label><select class="bsl" id="batchFramework" onchange="updBatchVer()"><option value="">None (Custom)</option></select></div><div class="fg"><label>Version</label><select class="bsl" id="batchVersion"><option value="">—</option></select></div></div><div style="display:flex;align-items:center;gap:8px;margin-top:8px"><input type="checkbox" id="autoSaveBank" checked style="accent-color:var(--ac)"><label for="autoSaveBank" style="font-size:11px;color:var(--tx2);cursor:pointer">Auto-save completed questionnaire to answer bank</label></div><div style="margin-top:14px;text-align:right"><button class="bb" id="processBtn" onclick="startProc()">Process Questionnaire</button></div></div><div class="bc prg" id="progressSection"><h2>Processing</h2><div class="pb"><div class="pf" id="progressBar"></div></div><div class="pt" id="progressText">Starting...</div><div class="pl" id="progressLog"></div></div><div class="bc res" id="resultsSection"><h2>Results</h2><div class="sr"><div class="sc t"><div class="n" id="statTotal">0</div><div class="l">Total</div></div><div class="sc h"><div class="n" id="statHigh">0</div><div class="l">High</div></div><div class="sc m"><div class="n" id="statMedium">0</div><div class="l">Medium</div></div><div class="sc w"><div class="n" id="statLow">0</div><div class="l">Review</div></div></div><div id="flagSummary" style="display:none;font-size:11px;padding:6px 10px;margin-bottom:8px;border:1px solid var(--bd);border-radius:6px;background:rgba(255,255,255,.03)"></div><div class="fb"><button class="fbtn on" onclick="fRes('all',this)">All</button><button class="fbtn" onclick="fRes('high',this)">High</button><button class="fbtn" onclick="fRes('medium',this)">Medium</button><button class="fbtn" onclick="fRes('low',this)">Low</button><button class="fbtn" onclick="fRes('flagged',this)" style="border-color:var(--rd)">Flagged</button></div><div class="tw"><table><thead><tr><th>ID</th><th>Question</th><th>Answer</th><th>Source</th><th>Conf.</th></tr></thead><tbody id="resultsBody"></tbody></table></div><div class="abr"><button class="bb sec" onclick="resetUp()">New</button><button class="bb" onclick="saveProcToBank()" id="saveBankBtn" style="background:var(--gn)">Save to Bank</button><button class="bb dl" onclick="dlFile()">Download Excel</button></div></div></div></div>
 <div class="pn" id="calendarPanel" style="flex-direction:row;">
 <!-- Ticket list sidebar -->
 <div id="calTicketList" style="width:300px;border-right:1px solid var(--bd);display:flex;flex-direction:column;flex-shrink:0;background:var(--sb);overflow:hidden;">
@@ -582,9 +663,161 @@ html.light .fbtn.on{background:var(--ac);border-color:var(--ac);color:#fff}
 </div>
 </div>
 <div class="cmod" id="cMod" onclick="if(event.target===this)this.classList.remove('vis')"><div class="cdet" id="cDet"></div></div>
-<div class="pn bp" id="importPanel"><div class="bi"><div class="bc"><h2>Import to Answer Bank</h2><p style="color:var(--tx2);font-size:12px;margin-bottom:14px">Upload a completed questionnaire file. The original file is saved as-is to the selected folder.</p><div class="ist"><h3><span class="step">1</span>Upload File</h3><div class="dz" id="iDZ"><div class="dz-spin"></div><p class="dz-ldtxt" style="display:none;color:var(--ac);font-size:12px;font-weight:500">Uploading...</p><div class="di">&#128229;</div><p>Drop a questionnaire file here</p><div class="sup">Excel, CSV, PDF, Word, JSON, Text</div><div class="fn" id="iFN"></div><input type="file" id="iFI" accept=".xlsx,.xls,.csv,.pdf,.docx,.json,.txt,.md"></div></div><div class="ist" id="iFileInfo" style="display:none"></div><div class="ist" id="iS2" style="display:none"><h3><span class="step">2</span>Destination</h3><div class="itg"><div class="itb" onclick="sIT('category',this)"><div class="tt">Past Questionnaire</div><div class="td">General archive</div></div><div class="itb" onclick="sIT('product-override',this)"><div class="tt">Product</div><div class="td">Product-specific archive</div></div><div class="itb" onclick="sIT('policy',this)"><div class="tt">Policy</div><div class="td">Policy source document</div></div><div class="itb" onclick="sIT('framework',this)"><div class="tt">Framework</div><div class="td">Completed HECVAT/SIG</div></div></div><div id="iSS" style="display:none"><div class="fr"><div class="fg" id="iPG" style="display:none"><label>Product</label><select class="bsl" id="iProd"></select></div><div class="fg" id="iFG" style="display:none"><label>Framework</label><select class="bsl" id="iFW"></select></div><div class="fg" id="iVG" style="display:none"><label>Version</label><select class="bsl" id="iVer"></select></div></div><div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end"><button class="bb sec" onclick="resetImp()">Cancel</button><button class="bb" onclick="subImpFile()">Upload</button></div></div></div></div><div id="iSuc" style="display:none"></div></div></div></div>
-<div class="pn bp" id="migratePanel"><div class="bc" id="migForm"><h2>HECVAT Migration</h2><p style="color:var(--tx2);font-size:12px;margin-bottom:14px">Migrate answers between HECVAT/SIG framework versions with AI verification.</p><div class="mf"><div class="mfb" id="mSB" onclick="document.getElementById('mSI').click()"><div class="ml">Source (Old)</div><div style="font-size:20px;margin:4px 0">&#128196;</div><div class="mn2" id="mSN">Select source file</div><div class="mc2" id="mSC"></div><input type="file" id="mSI" accept=".xlsx,.xls,.csv" onchange="hMF('source',this.files[0])"></div><div class="marr">&rarr;</div><div class="mfb" id="mTB" onclick="document.getElementById('mTI').click()"><div class="ml">Target (New)</div><div style="font-size:20px;margin:4px 0">&#128196;</div><div class="mn2" id="mTN">Select target file</div><div class="mc2" id="mTC"></div><input type="file" id="mTI" accept=".xlsx,.xls,.csv" onchange="hMF('target',this.files[0])"></div></div><div style="text-align:center"><button class="bb" id="migBtn" onclick="startMig()" disabled>Start Migration</button></div></div><div class="bc prg" id="migPrg"><h2>Migrating...</h2><div class="pb"><div class="pf" id="migBar"></div></div><div class="pt" id="migPT">Starting...</div></div><div class="bc" id="migRes" style="display:none"><h2>Migration Results</h2><div class="sr"><div class="sc t"><div class="n" id="migT">0</div><div class="l">Total</div></div><div class="sc h"><div class="n" id="migH">0</div><div class="l">High</div></div><div class="sc m"><div class="n" id="migM">0</div><div class="l">Medium</div></div><div class="sc w"><div class="n" id="migL">0</div><div class="l">Low/None</div></div></div><div class="fb"><button class="fbtn on" onclick="fMig('all',this)">All</button><button class="fbtn" onclick="fMig('high',this)">High</button><button class="fbtn" onclick="fMig('medium',this)">Medium</button><button class="fbtn" onclick="fMig('low',this)">Low</button><button class="fbtn" onclick="fMig('none',this)">None</button></div><div class="mmap" id="mMap"></div><div class="abr"><button class="bb sec" onclick="resetMig()">New Migration</button><button class="bb dl" onclick="expMig()">Download Excel</button></div></div></div>
+<div class="pn bp" id="importPanel"><div class="bi"><div class="bc"><h2>Import to Answer Bank</h2><p style="color:var(--tx2);font-size:12px;margin-bottom:14px">Upload a completed questionnaire file. The original file is saved as-is to the selected folder.</p><div class="ist"><h3><span class="step">1</span>Upload File</h3><div class="dz" id="iDZ"><div class="dz-spin"></div><p class="dz-ldtxt" style="display:none;color:var(--ac);font-size:12px;font-weight:500">Uploading...</p><div class="di">&#128229;</div><p>Drop a questionnaire file here</p><div class="sup">Excel, CSV, PDF, Word, PowerPoint, JSON, Text, HTML, XML, RTF</div><div class="fn" id="iFN"></div><input type="file" id="iFI" accept=".xlsx,.xls,.csv,.pdf,.docx,.pptx,.json,.txt,.md,.html,.htm,.xml,.rtf"></div></div><div class="ist" id="iFileInfo" style="display:none"></div><div class="ist" id="iS2" style="display:none"><h3><span class="step">2</span>Destination</h3><div class="itg"><div class="itb" onclick="sIT('category',this)"><div class="tt">Past Questionnaire</div><div class="td">General archive</div></div><div class="itb" onclick="sIT('product-override',this)"><div class="tt">Product</div><div class="td">Product-specific archive</div></div><div class="itb" onclick="sIT('policy',this)"><div class="tt">Policy</div><div class="td">Policy source document</div></div><div class="itb" onclick="sIT('framework',this)"><div class="tt">Framework</div><div class="td">Completed HECVAT/SIG</div></div></div><div id="iSS" style="display:none"><div class="fr"><div class="fg" id="iPG" style="display:none"><label>Product</label><select class="bsl" id="iProd"></select></div><div class="fg" id="iFG" style="display:none"><label>Framework</label><select class="bsl" id="iFW"></select></div><div class="fg" id="iVG" style="display:none"><label>Version</label><select class="bsl" id="iVer"></select></div></div><div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end"><button class="bb sec" onclick="resetImp()">Cancel</button><button class="bb" onclick="subImpFile()">Upload</button></div></div></div></div><div id="iProgress" style="display:none"></div><div id="iSuc" style="display:none"></div></div></div></div>
+<div class="pn bp" id="migratePanel"><div class="bc" id="migForm"><h2>HECVAT / SIG Migration</h2><p style="color:var(--tx2);font-size:12px;margin-bottom:14px">Migrate answers between HECVAT/SIG framework versions with AI verification.</p>
+<div class="fr" style="margin-bottom:14px"><div class="fg"><label>Product</label><select class="bsl" id="migProductSelect"><option value="">All Products</option></select></div><div class="fg"><label>Framework</label><select class="bsl" id="migFramework"><option value="">Any Framework</option></select></div></div>
+<div class="mf"><div class="mfb" id="mSB" onclick="document.getElementById('mSI').click()"><div class="ml">Source (Old)</div><div style="font-size:20px;margin:4px 0">&#128196;</div><div class="mn2" id="mSN">Select source file</div><div class="mc2" id="mSC"></div><input type="file" id="mSI" accept=".xlsx,.xls,.csv" onchange="hMF('source',this.files[0])"></div><div class="marr">&rarr;</div><div class="mfb" id="mTB" onclick="document.getElementById('mTI').click()"><div class="ml">Target (New)</div><div style="font-size:20px;margin:4px 0">&#128196;</div><div class="mn2" id="mTN">Select target file</div><div class="mc2" id="mTC"></div><input type="file" id="mTI" accept=".xlsx,.xls,.csv" onchange="hMF('target',this.files[0])"></div></div><div style="text-align:center"><button class="bb" id="migBtn" onclick="startMig()" disabled>Start Migration</button></div></div><div class="bc prg" id="migPrg"><h2>Migrating...</h2><div class="pb"><div class="pf" id="migBar"></div></div><div class="pt" id="migPT">Starting...</div></div><div class="bc" id="migRes" style="display:none"><h2>Migration Results</h2><div class="sr"><div class="sc t"><div class="n" id="migT">0</div><div class="l">Total</div></div><div class="sc h"><div class="n" id="migH">0</div><div class="l">High</div></div><div class="sc m"><div class="n" id="migM">0</div><div class="l">Medium</div></div><div class="sc w"><div class="n" id="migL">0</div><div class="l">Low/None</div></div></div><div class="fb"><button class="fbtn on" onclick="fMig('all',this)">All</button><button class="fbtn" onclick="fMig('high',this)">High</button><button class="fbtn" onclick="fMig('medium',this)">Medium</button><button class="fbtn" onclick="fMig('low',this)">Low</button><button class="fbtn" onclick="fMig('none',this)">None</button></div><div class="mmap" id="mMap"></div><div class="abr"><button class="bb sec" onclick="resetMig()">New Migration</button><button class="bb dl" onclick="expMig()">Download Excel</button></div></div></div>
 </div>
+<!-- Admin Settings Panel -->
+<div class="pn bp" id="adminPanel"><div class="bi" style="max-width:100%">
+<div style="margin-bottom:20px"><h2 style="font-size:18px;font-weight:700;margin-bottom:4px">Confluence & Jira Integration</h2><p style="color:var(--tx2);font-size:12px">Configure your Atlassian authentication, project settings, and knowledge sources</p></div>
+<!-- Admin sub-tabs -->
+<div class="admin-tabs" id="adminTabs">
+<button class="admin-tab on" onclick="swAdminTab('knowledge',this)">Authentication</button>
+<button class="admin-tab" onclick="swAdminTab('quality',this)">Answer Quality</button>
+<button class="admin-tab" onclick="swAdminTab('system',this)">System Status</button>
+<button class="admin-tab" onclick="swAdminTab('products',this)">Products</button>
+<button class="admin-tab" onclick="swAdminTab('frameworks',this)">Frameworks</button>
+<button class="admin-tab" onclick="swAdminTab('advanced',this)">Advanced</button>
+</div>
+
+<!-- Authentication Tab -->
+<div class="admin-section on" id="adminKnowledge">
+<!-- Unified Atlassian Authentication -->
+<div class="bc admin-card">
+<h2 style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--ac2)" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Atlassian Authentication</h2>
+<p class="admin-desc">One set of credentials for both Confluence and Jira</p>
+<div class="admin-form">
+<div class="admin-field"><label>Instance URL <span class="req">*</span></label><input type="text" class="admin-input" id="cfgAtlUrl" placeholder="https://your-instance.atlassian.net"><span class="admin-hint">Your Atlassian Cloud instance URL (used for both Confluence and Jira)</span></div>
+<div class="admin-field"><label>Account Email <span class="req">*</span></label><input type="email" class="admin-input" id="cfgAtlEmail" placeholder="you@company.com"><span class="admin-hint">Your Atlassian account email address</span></div>
+<div class="admin-field"><label>API Token <span class="req">*</span></label><input type="password" class="admin-input" id="cfgAtlToken" placeholder="API token saved — only enter to change"><span class="admin-hint">Create an API token at id.atlassian.com/manage-profile/security/api-tokens</span></div>
+<div class="admin-field"><label>Jira Project Key <span class="req">*</span></label><input type="text" class="admin-input" id="cfgAtlProject" value="ISC" placeholder="ISC" style="max-width:160px;text-transform:uppercase"><span class="admin-hint">Jira project key for security questionnaire tickets (e.g. ISC, SEC, SECQ)</span></div>
+<div style="display:flex;gap:16px;margin-top:4px">
+<div class="admin-field"><label class="admin-check"><input type="checkbox" id="cfgConfEnabled" checked><span class="admin-check-box"></span>Enable Confluence</label></div>
+<div class="admin-field"><label class="admin-check"><input type="checkbox" id="cfgJiraEnabled" checked><span class="admin-check-box"></span>Enable Jira</label></div>
+</div>
+<div class="admin-actions"><button class="bb" onclick="saveAtlassianConfig()">Save & Authenticate</button><button class="bb sec" onclick="testAtlassianConn()">Test Connection</button></div>
+<div class="admin-result" id="cfgAtlResult" style="display:none"></div>
+</div>
+<details class="admin-details"><summary>How to get API credentials</summary><ol class="admin-steps"><li>Go to <a href="https://id.atlassian.com/manage-profile/security/api-tokens" target="_blank">Atlassian API Tokens</a></li><li>Click "Create API token" and give it a label</li><li>Copy the token and paste it above</li><li>Use your Atlassian account email as the email field</li><li>Both Confluence and Jira use the same credentials</li></ol><p class="admin-note">Note: Credentials are stored in server memory and .env file</p></details>
+</div>
+
+<!-- Claude API Key -->
+<div class="bc admin-card">
+<h2 style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--yl)" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>Claude API Key</h2>
+<p class="admin-desc">Required for chat assistant and batch processing</p>
+<div class="admin-form">
+<div class="admin-field"><label>API Key <span class="req">*</span></label><input type="password" class="admin-input" id="apiKey" placeholder="sk-ant-..."><span class="admin-hint">Get your API key from console.anthropic.com/settings/keys</span></div>
+<div class="admin-actions"><button class="bb" onclick="saveApiKey()">Save & Authenticate</button><button class="bb sec" onclick="testApiKey()">Test Connection</button></div>
+<div id="cfgApiResult" style="display:none"></div>
+</div>
+</div>
+
+<!-- Connection Status -->
+<div class="bc admin-card">
+<h2 style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--gn)" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>Connection Status</h2>
+<div id="atlConnStatus" style="margin-top:8px">
+<div class="admin-status-row"><span class="admin-status-label"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:6px"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>Confluence</span><span class="admin-status-badge" id="sysConfluence">Checking...</span></div>
+<div class="admin-status-row"><span class="admin-status-label"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:6px"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M3 9h6M3 15h6"/></svg>Jira</span><span class="admin-status-badge" id="sysJira">Checking...</span></div>
+<div class="admin-status-row"><span class="admin-status-label"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:6px"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>Project Key</span><span class="admin-status-badge" id="sysProject">ISC</span></div>
+<div class="admin-status-row"><span class="admin-status-label"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:6px"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>Claude API</span><span class="admin-status-badge" id="sysAI">Not configured</span></div>
+</div>
+</div>
+
+<!-- Local Answer Bank -->
+<div class="bc admin-card">
+<h2 style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--gn)" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>Local Answer Bank</h2>
+<p class="admin-desc">Your organization's security knowledge base</p>
+<div class="admin-form">
+<div id="bankStats" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px">
+<div class="admin-stat"><div class="admin-stat-n" id="bankProdCount">—</div><div class="admin-stat-l">Products</div></div>
+<div class="admin-stat"><div class="admin-stat-n" id="bankCatCount">—</div><div class="admin-stat-l">Categories</div></div>
+<div class="admin-stat"><div class="admin-stat-n" id="bankPolCount">—</div><div class="admin-stat-l">Policies</div></div>
+<div class="admin-stat"><div class="admin-stat-n" id="bankFWCount">—</div><div class="admin-stat-l">Frameworks</div></div>
+<div class="admin-stat"><div class="admin-stat-n" id="bankPQCount">—</div><div class="admin-stat-l">Past Q's</div></div>
+<div class="admin-stat"><div class="admin-stat-n" id="bankTotalFiles">—</div><div class="admin-stat-l">Total Files</div></div>
+</div>
+<div id="bankFileList" style="display:none;margin-top:8px;max-height:200px;overflow-y:auto;font-size:11px;color:var(--tx2);border:1px solid var(--bd);border-radius:6px;padding:8px"></div>
+<div class="admin-actions" style="margin-top:12px"><button class="bb sec" onclick="refreshBankStats()">Refresh Stats</button><button class="bb sec" onclick="toggleBankFiles()" style="margin-left:8px">View Files</button></div>
+</div>
+</div>
+</div>
+
+<!-- Answer Quality Tab -->
+<div class="admin-section" id="adminQuality">
+<div class="bc admin-card">
+<h2>Answer Quality Settings</h2>
+<p class="admin-desc">Control how answers are generated and validated</p>
+<div class="admin-form">
+<div class="admin-field"><label>AI Provider</label><select class="admin-input" id="cfgAIProvider" style="max-width:240px" disabled><option value="claude">Claude (Anthropic)</option></select></div>
+<div class="admin-field"><label>Default Model</label><select class="admin-input" id="cfgAIModel" style="max-width:300px" onchange="chModel(this.value)"><option value="claude-opus-4-20250514">Claude Opus 4</option><option value="claude-sonnet-4-20250514">Claude Sonnet 4</option><option value="claude-haiku-4-5-20251001">Claude Haiku 4.5</option></select></div>
+<div class="admin-field"><label>Confidence Threshold</label><div style="display:flex;align-items:center;gap:10px"><input type="range" id="cfgConfThreshold" min="0" max="100" value="60" style="flex:1;accent-color:var(--ac)"><span id="cfgConfThreshVal" style="font-size:12px;font-weight:600;color:var(--ac);min-width:36px">60%</span></div><span class="admin-hint">Answers below this threshold are marked for review</span></div>
+<div class="admin-field"><label class="admin-check"><input type="checkbox" id="cfgAutoSources" checked><span class="admin-check-box"></span>Always include source citations in answers</label></div>
+<div class="admin-field"><label class="admin-check"><input type="checkbox" id="cfgSearchConf" checked><span class="admin-check-box"></span>Search Confluence for every chat query</label></div>
+<div class="admin-field"><label class="admin-check"><input type="checkbox" id="cfgSearchJira" checked><span class="admin-check-box"></span>Search Jira for every chat query</label></div>
+</div>
+</div>
+</div>
+
+<!-- System Status Tab -->
+<div class="admin-section" id="adminSystem">
+<div class="bc admin-card">
+<h2>System Status</h2>
+<div id="sysStatus" style="margin-top:12px">
+<div class="admin-status-row"><span class="admin-status-label">Server</span><span class="admin-status-badge ok" id="sysServer">Running</span></div>
+<div class="admin-status-row"><span class="admin-status-label">Confluence</span><span class="admin-status-badge" id="sysConfluence2">Checking...</span></div>
+<div class="admin-status-row"><span class="admin-status-label">Jira</span><span class="admin-status-badge" id="sysJira2">Checking...</span></div>
+<div class="admin-status-row"><span class="admin-status-label">Answer Bank</span><span class="admin-status-badge" id="sysBank">Checking...</span></div>
+<div class="admin-status-row"><span class="admin-status-label">Claude API</span><span class="admin-status-badge" id="sysAI2">Not configured</span></div>
+</div>
+<div class="admin-actions" style="margin-top:12px"><button class="bb sec" onclick="checkSystemStatus()">Refresh Status</button></div>
+</div>
+</div>
+
+<!-- Advanced Tab -->
+<div class="admin-section" id="adminProducts">
+<div class="bc admin-card">
+<h2 style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--ac2)" stroke-width="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 002 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>Product Management</h2>
+<p class="admin-desc">Manage your product list. Products appear in all dropdowns across the app.</p>
+<div class="admin-form">
+<div style="display:flex;gap:8px;margin-bottom:12px">
+<input type="text" class="admin-input" id="newProductName" placeholder="Enter product name" style="flex:1" onkeydown="if(event.key==='Enter')addProduct()">
+<button class="bb" onclick="addProduct()" style="white-space:nowrap">Add Product</button>
+</div>
+<div id="adminProductResult" style="display:none" class="admin-result"></div>
+<div id="adminProductList" style="display:flex;flex-direction:column;gap:4px"></div>
+</div>
+</div>
+</div>
+
+<div class="admin-section" id="adminFrameworks">
+<div class="bc admin-card">
+<h2 style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--yl)" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>Framework Management</h2>
+<p class="admin-desc">Manage HECVAT, SIG, and other security framework versions. These appear in Batch, Import, and Migration dropdowns.</p>
+<div class="admin-form">
+<div style="display:flex;gap:8px;margin-bottom:12px">
+<input type="text" class="admin-input" id="newFWName" placeholder="Framework name (e.g. HECVAT Lite)" style="flex:1" onkeydown="if(event.key==='Enter')addFramework()">
+<button class="bb" onclick="addFramework()" style="white-space:nowrap">Add Framework</button>
+</div>
+<div id="adminFWResult" style="display:none" class="admin-result"></div>
+<div id="adminFWList" style="display:flex;flex-direction:column;gap:10px"></div>
+</div>
+</div>
+</div>
+
+<div class="admin-section" id="adminAdvanced">
+<div class="bc admin-card">
+<h2>Advanced Settings</h2>
+<p class="admin-desc">Server configuration and debug options</p>
+<div class="admin-form">
+<div class="admin-field"><label>Answer Bank Path</label><input type="text" class="admin-input" id="cfgBankPath" disabled style="opacity:.7"><span class="admin-hint">Configured on the server side</span></div>
+<div class="admin-field"><label>Output Directory</label><input type="text" class="admin-input" id="cfgOutputPath" disabled style="opacity:.7"></div>
+<div class="admin-field"><label>Server Port</label><input type="text" class="admin-input" id="cfgPort" disabled style="opacity:.7;max-width:100px"></div>
+</div>
+</div>
+</div>
+</div></div>
+
 <!-- Save to Bank modal -->
 <div class="save-modal" id="saveModal" onclick="if(event.target===this)this.classList.remove('vis')">
 <div class="save-box">
@@ -604,39 +837,70 @@ html.light .fbtn.on{background:var(--ac);border-color:var(--ac);color:#fff}
 <div class="save-res" id="saveRes" style="display:none"></div>
 </div>
 </div>
+<div class="gtb" id="gtBar"><div class="gtb-tasks" id="gtTasks"></div></div>
 <script>
 let upFile=null,outFN='',allRes=[],chHist=[],chAtt=[],isStr=false,convs=JSON.parse(localStorage.getItem('sq_convs')||'[]'),curCID=null;
 const MN={'claude-opus-4-20250514':'Claude Opus 4','claude-sonnet-4-20250514':'Claude Sonnet 4','claude-haiku-4-5-20251001':'Claude Haiku 4.5'};
-const sk=localStorage.getItem('anthropic_api_key');if(sk)document.getElementById('apiKey').value=sk;
-document.getElementById('apiKey').addEventListener('change',e=>localStorage.setItem('anthropic_api_key',e.target.value));
-const sp=localStorage.getItem('sq_provider')||'claude';
-document.getElementById('aiProvider').value=sp;
-chAIProvider(sp);
-updateAPIKeyPlaceholder(sp);
+const sk=localStorage.getItem('anthropic_api_key');if(sk){const apiInp=document.getElementById('apiKey');if(apiInp)apiInp.placeholder='API key saved — only enter to change'}
 const sm=localStorage.getItem('sq_model')||'claude-opus-4-20250514';
 document.getElementById('modelSelect').value=sm;
 setTimeout(()=>{const ft=document.getElementById('inFt');if(ft)ft.textContent=`Using ${sm.split('/').pop()} \u00b7 Searches Confluence, Jira & local bank`},100);
-const AI_PROVIDERS={'claude':['claude-opus-4-20250514','claude-sonnet-4-20250514','claude-haiku-4-5-20251001'],'openai':['gpt-4-turbo','gpt-4o','gpt-4o-mini','gpt-3.5-turbo'],'gemini':['gemini-2.0-flash','gemini-1.5-pro','gemini-1.5-flash'],'cohere':['command-r-plus','command-r','command-light'],'huggingface':['meta-llama/Llama-2-70b-chat-hf','mistralai/Mistral-7B-Instruct-v0.1']};
-const aiKeys={};
-function chAIProvider(p){localStorage.setItem('sq_provider',p);const ms=document.getElementById('modelSelect');ms.innerHTML='';const mods=AI_PROVIDERS[p]||[];mods.forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=m;ms.appendChild(o)});ms.value=mods[0];localStorage.setItem('sq_model',mods[0]);updateAPIKeyPlaceholder(p)}
-function updateAPIKeyPlaceholder(p){const inp=document.getElementById('apiKey');const pl={'claude':'sk-ant-...','openai':'sk-...','gemini':'AIza...','cohere':'Cohere API Key','huggingface':'hf_...'};inp.placeholder=pl[p]||'API Key'}
-function chModel(m){localStorage.setItem('sq_model',m);document.getElementById('inFt').textContent=`Using ${m} \u00b7 Searches Confluence, Jira & local bank`}
+function chModel(m){localStorage.setItem('sq_model',m);document.getElementById('inFt').textContent=`Using ${m} \u00b7 Searches Confluence, Jira & local bank`;const sb=document.getElementById('modelSelect');if(sb&&sb.value!==m)sb.value=m;const ad=document.getElementById('cfgAIModel');if(ad&&ad.value!==m)ad.value=m}
 function gMod(){return document.getElementById('modelSelect').value}
-function getAIProvider(){return localStorage.getItem('sq_provider')||'claude'}
-async function setAIKey(){const p=getAIProvider();const k=document.getElementById('apiKey').value.trim();const m=document.getElementById('modelSelect').value;if(!k){alert('Please enter API key');return}try{const r=await fetch('/api/ai/provider',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:p,apiKey:k,model:m})});const d=await r.json();if(r.ok){aiKeys[p]=k;alert(`✓ ${p} configured`);document.getElementById('apiKey').value=''}else alert(d.error||'Failed to set API key')}catch(e){alert('Error: '+e.message)}}
-async function setJiraAuth(){const base=document.getElementById('jiraBase').value.trim();const email=document.getElementById('jiraEmail').value.trim();const token=document.getElementById('jiraToken').value.trim();if(!base||!email||!token){alert('Please enter Jira base URL, email, and API token');return}const btn=event.target;btn.disabled=true;btn.textContent='Connecting...';try{const r=await fetch('/api/jira/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({base,email,token})});const d=await r.json();if(r.ok){document.getElementById('jiraStatus').textContent='✓ Connected';document.getElementById('jiraStatus').style.color='var(--gn)';document.getElementById('jiraToken').value=''}else{alert(d.error||'Authentication failed');document.getElementById('jiraStatus').textContent='✗ Failed'}}}catch(e){alert('Error: '+e.message);document.getElementById('jiraStatus').textContent='✗ Error'}finally{btn.disabled=false;btn.textContent='Connect Jira'}}
-async function chkJiraStatus(){try{const r=await fetch('/api/jira/status');const d=await r.json();document.getElementById('jiraStatus').textContent=d.configured?`✓ ${d.email}@${d.base}`:'Not configured';if(d.configured)document.getElementById('jiraStatus').style.color='var(--gn)'}catch{}}
-function loadProducts(){fetch('/api/products').then(r=>r.json()).then(ps=>{['productSelect','docProductSelect','chatProduct'].forEach(id=>{const s=document.getElementById(id);const cur=s.value;s.innerHTML='<option value="">All Products</option>';ps.forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=p;if(p===cur)o.selected=true;s.appendChild(o)})})})}
+function showResult(el,cls,msg){el.style.display='flex';el.className='admin-result '+cls;el.textContent=msg}
+function saveApiKey(){const k=document.getElementById('apiKey').value.trim();const res=document.getElementById('cfgApiResult');
+if(!k){showResult(res,'err','Please enter an API key');return}
+localStorage.setItem('anthropic_api_key',k);
+showResult(res,'ok','Claude API key saved successfully');
+document.getElementById('apiKey').value='';document.getElementById('apiKey').placeholder='API key saved — only enter to change';
+checkSystemStatus()}
+async function testApiKey(){const res=document.getElementById('cfgApiResult');const k=localStorage.getItem('anthropic_api_key');
+if(!k){showResult(res,'err','No API key saved. Enter and save one first.');return}
+showResult(res,'warn','Testing connection to Anthropic...');
+try{const r=await fetch('/api/test-api-key',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:k})});const d=await r.json();
+if(d.success){showResult(res,'ok','Connected to Anthropic API — '+d.model)}
+else{showResult(res,'err',d.error||'Connection failed')}}catch(e){showResult(res,'err',e.message)}}
+const PRODUCT_LABELS={'EV+PD':'EV+/PD'};
+function pLabel(p){return PRODUCT_LABELS[p]||p}
+function loadProducts(){fetch('/api/products').then(r=>r.json()).then(ps=>{['productSelect','docProductSelect','chatProduct','migProductSelect'].forEach(id=>{const s=document.getElementById(id);if(!s)return;const cur=s.value;s.innerHTML='<option value="">All Products</option>';ps.forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=pLabel(p);if(p===cur)o.selected=true;s.appendChild(o)})});const ip=document.getElementById('iProd');if(ip){const cur=ip.value;ip.innerHTML='<option value="" disabled selected>— Select product —</option>';ps.forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=pLabel(p);if(p===cur)o.selected=true;ip.appendChild(o)})}})}
 loadProducts();
-chkJiraStatus();
 setInterval(loadProducts,30000);
+function renderProductList(){fetch('/api/products').then(r=>r.json()).then(ps=>{const el=document.getElementById('adminProductList');if(!el)return;if(!ps.length){el.innerHTML='<div style="color:var(--tx3);font-size:12px;padding:8px">No products configured</div>';return}el.innerHTML=ps.map(p=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--sf);border:1px solid var(--bd);border-radius:6px"><span style="font-size:13px;color:var(--tx)">${esc(pLabel(p))}</span><button onclick="delProduct('${esc(p)}')" style="background:none;border:none;color:var(--tx3);cursor:pointer;font-size:16px;padding:2px 6px;border-radius:4px;transition:color .12s" onmouseover="this.style.color='var(--rd)'" onmouseout="this.style.color='var(--tx3)'" title="Remove">&times;</button></div>`).join('')})}
+async function addProduct(){const inp=document.getElementById('newProductName');const name=inp.value.trim();const res=document.getElementById('adminProductResult');if(!name){showResult(res,'err','Enter a product name');return}try{const r=await fetch('/api/products',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});const d=await r.json();if(d.success){inp.value='';showResult(res,'ok',`Product "${pLabel(name)}" added`);setTimeout(()=>res.style.display='none',2000);loadProducts();renderProductList()}else{showResult(res,'err',d.error||'Failed to add product')}}catch(e){showResult(res,'err',e.message)}}
+async function delProduct(name){if(!confirm(`Remove product "${pLabel(name)}"? This won't delete any files.`))return;const res=document.getElementById('adminProductResult');try{const r=await fetch('/api/products/'+encodeURIComponent(name),{method:'DELETE'});const d=await r.json();if(d.success){showResult(res,'ok',`Product "${pLabel(name)}" removed`);setTimeout(()=>res.style.display='none',2000);loadProducts();renderProductList()}else{showResult(res,'err',d.error||'Failed')}}catch(e){showResult(res,'err',e.message)}}
+
+/* Framework Management */
+async function renderFWList(){try{const r=await fetch('/api/bank/frameworks');const fws=await r.json();const el=document.getElementById('adminFWList');if(!el)return;if(!fws.length){el.innerHTML='<div style="color:var(--tx3);font-size:12px;padding:8px">No frameworks configured. Add HECVAT, SIG, or other frameworks above.</div>';return}
+el.innerHTML=fws.map(fw=>`<div style="border:1px solid var(--bd);border-radius:8px;padding:10px 12px;background:var(--sf)">
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+<span style="font-size:14px;font-weight:600;color:var(--tx)">${esc(fw.name)}</span>
+<button onclick="delFramework('${esc(fw.name)}')" style="background:none;border:none;color:var(--tx3);cursor:pointer;font-size:16px;padding:2px 6px;border-radius:4px" onmouseover="this.style.color='var(--rd)'" onmouseout="this.style.color='var(--tx3)'" title="Remove framework">&times;</button>
+</div>
+<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px" id="fwVers_${esc(fw.name).replace(/\s/g,'_')}">${fw.versions.length?fw.versions.map(v=>`<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:var(--sf2);border:1px solid var(--bd);border-radius:4px;font-size:11px;color:var(--tx2)">${esc(v)}<button onclick="delFWVersion('${esc(fw.name)}','${esc(v)}')" style="background:none;border:none;color:var(--tx3);cursor:pointer;font-size:13px;line-height:1;padding:0 2px" onmouseover="this.style.color='var(--rd)'" onmouseout="this.style.color='var(--tx3)'">&times;</button></span>`).join(''):'<span style="font-size:11px;color:var(--tx3)">No versions yet</span>'}
+</div>
+<div style="display:flex;gap:6px">
+<input type="text" class="admin-input" placeholder="Add version (e.g. v3.1, Full, Lite)" style="flex:1;font-size:12px;padding:4px 8px" id="fwVerInput_${esc(fw.name).replace(/\s/g,'_')}" onkeydown="if(event.key==='Enter')addFWVersion('${esc(fw.name)}')">
+<button class="bb sec" onclick="addFWVersion('${esc(fw.name)}')" style="font-size:11px;padding:4px 10px">Add Version</button>
+</div></div>`).join('')}catch{}}
+
+async function addFramework(){const inp=document.getElementById('newFWName');const name=inp.value.trim();const res=document.getElementById('adminFWResult');if(!name){showResult(res,'err','Enter a framework name');return}
+try{const r=await fetch('/api/frameworks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});const d=await r.json();if(d.success){inp.value='';showResult(res,'ok',`Framework "${name}" added`);setTimeout(()=>res.style.display='none',2000);renderFWList()}else{showResult(res,'err',d.error||'Failed')}}catch(e){showResult(res,'err',e.message)}}
+
+async function delFramework(name){if(!confirm(`Remove framework "${name}"? This won't delete any stored files.`))return;const res=document.getElementById('adminFWResult');try{const r=await fetch('/api/frameworks/'+encodeURIComponent(name),{method:'DELETE'});const d=await r.json();if(d.success){showResult(res,'ok',`Framework "${name}" removed`);setTimeout(()=>res.style.display='none',2000);renderFWList()}else{showResult(res,'err',d.error||'Failed')}}catch(e){showResult(res,'err',e.message)}}
+
+async function addFWVersion(fwName){const inp=document.getElementById('fwVerInput_'+fwName.replace(/\s/g,'_'));const ver=inp.value.trim();const res=document.getElementById('adminFWResult');if(!ver){showResult(res,'err','Enter a version name');return}
+try{const r=await fetch('/api/frameworks/'+encodeURIComponent(fwName)+'/versions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({version:ver})});const d=await r.json();if(d.success){inp.value='';showResult(res,'ok',`Version "${ver}" added to ${fwName}`);setTimeout(()=>res.style.display='none',2000);renderFWList()}else{showResult(res,'err',d.error||'Failed')}}catch(e){showResult(res,'err',e.message)}}
+
+async function delFWVersion(fwName,ver){if(!confirm(`Remove version "${ver}" from ${fwName}?`))return;const res=document.getElementById('adminFWResult');try{const r=await fetch('/api/frameworks/'+encodeURIComponent(fwName)+'/versions/'+encodeURIComponent(ver),{method:'DELETE'});const d=await r.json();if(d.success){showResult(res,'ok',`Version "${ver}" removed`);setTimeout(()=>res.style.display='none',2000);renderFWList()}else{showResult(res,'err',d.error||'Failed')}}catch(e){showResult(res,'err',e.message)}}
+
 renderHist();
-function sw(mode,btn){document.querySelectorAll('.sb-nav-item').forEach(b=>b.classList.remove('on'));btn.classList.add('on');document.querySelectorAll('.pn').forEach(p=>p.classList.remove('on'));document.getElementById({chat:'chatPanel',upload:'uploadPanel',calendar:'calendarPanel',import:'importPanel',migrate:'migratePanel'}[mode]).classList.add('on');document.querySelector('.mn').classList.toggle('no-top',mode!=='chat');if(mode==='calendar'){ldCal();ldAssignees();ldTickets();ldBoardAssignees();ldIssueTypes();ldStatuses()}if(mode==='import')ldImpOpts();if(mode==='upload')ldBatchFw()}
+(function(){const saved=localStorage.getItem('sq_active_tab');if(saved&&saved!=='chat'){const tabMap={upload:1,calendar:2,import:3,migrate:4,admin:5};const idx=tabMap[saved];if(idx!==undefined){const navItems=document.querySelectorAll('.sb-nav-item');if(navItems[idx])sw(saved,navItems[idx])}}})();
+function sw(mode,btn){localStorage.setItem('sq_active_tab',mode);document.querySelectorAll('.sb-nav-item').forEach(b=>b.classList.remove('on'));btn.classList.add('on');document.querySelectorAll('.pn').forEach(p=>p.classList.remove('on'));document.getElementById({chat:'chatPanel',upload:'uploadPanel',calendar:'calendarPanel',import:'importPanel',migrate:'migratePanel',admin:'adminPanel'}[mode]).classList.add('on');document.querySelector('.mn').classList.toggle('no-top',mode!=='chat');if(mode==='calendar'){ldCal();ldAssignees();ldTickets();ldIssueTypes();ldStatuses()}if(mode==='import')ldImpOpts();if(mode==='upload')ldBatchFw();if(mode==='migrate')ldMigFw();if(mode==='admin')loadAdminSettings()}
 function saveConv(){if(!chHist.length)return;const t=chHist[0]?.content?.substring(0,40)||'New chat';const id=curCID||Date.now().toString();const idx=convs.findIndex(c=>c.id===id);const cv={id,title:t,messages:chHist,date:new Date().toISOString()};if(idx>=0)convs[idx]=cv;else convs.unshift(cv);if(convs.length>20)convs.pop();localStorage.setItem('sq_convs',JSON.stringify(convs));curCID=id;renderHist()}
 function loadConv(id){const c=convs.find(x=>x.id===id);if(!c)return;curCID=id;chHist=[...c.messages];const el=document.getElementById('chMsg');el.innerHTML='';c.messages.forEach(m=>appMsg(m.role,m.content,false));renderHist();document.getElementById('chScr').scrollTop=document.getElementById('chScr').scrollHeight}
 function delConv(id,e){e.stopPropagation();convs=convs.filter(c=>c.id!==id);localStorage.setItem('sq_convs',JSON.stringify(convs));if(curCID===id)newChat();else renderHist()}
 function renderHist(){const el=document.getElementById('histList');el.innerHTML='<div class="sb-hist-label">Recent</div>'+(convs.length?convs.map(c=>`<div class="hitem ${c.id===curCID?'on':''}" onclick="loadConv('${c.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg><span class="hitem-text">${esc(c.title)}</span><button class="hitem-del" onclick="delConv('${c.id}',event)">&times;</button></div>`).join(''):'<div style="padding:20px 12px;font-size:11px;color:var(--tx3);text-align:center">No conversations yet</div>')}
-function newChat(){if(chHist.length)saveConv();chHist=[];curCID=null;document.getElementById('chMsg').innerHTML=`<div class="welcome" id="wel"><div class="w-logo"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4" stroke-linecap="round" stroke-linejoin="round"/></svg></div><h2>Security Questionnaire Assistant</h2><p>Connected to Confluence, Jira, and your local answer bank.</p><div class="sugs"><div class="sug" onclick="uSug(this)">What encryption do we use for data at rest and in transit?</div><div class="sug" onclick="uSug(this)">Show me open security questionnaire tickets in Jira</div><div class="sug" onclick="uSug(this)">Find our incident response policy on Confluence</div><div class="sug" onclick="uSug(this)">Draft a HECVAT answer about multi-factor authentication</div></div></div>`;renderHist();sw('chat',document.querySelector('.tabs button'))}
+function newChat(){if(chHist.length)saveConv();chHist=[];curCID=null;document.getElementById('chMsg').innerHTML=`<div class="welcome" id="wel"><img class="w-logo" src="logo.svg" alt="Logo"><h2>Security Questionnaire Assistant</h2><p>Connected to Confluence, Jira, and your local answer bank.</p><div class="sugs"><div class="sug" onclick="uSug(this)">What encryption do we use for data at rest and in transit?</div><div class="sug" onclick="uSug(this)">Show me open security questionnaire tickets in Jira</div><div class="sug" onclick="uSug(this)">Find our incident response policy on Confluence</div><div class="sug" onclick="uSug(this)">Draft a HECVAT answer about multi-factor authentication</div></div></div>`;renderHist();sw('chat',document.querySelector('.tabs button'))}
 function uSug(el){document.getElementById('chIn').value=el.textContent;sendMsg()}
 function chKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg()}}
 function aRsz(el){el.style.height='auto';el.style.height=Math.min(el.scrollHeight,180)+'px'}
@@ -644,8 +908,8 @@ function appMsg(role,content,anim=true){const el=document.getElementById('chMsg'
 function cpMsg(b){const t=b.closest('.mc').querySelector('.mb').innerText;navigator.clipboard.writeText(t);b.classList.add('ok');b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>';setTimeout(()=>{b.classList.remove('ok');b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>'},2000)}
 async function hCF(fl){const atBtn=document.querySelector('.ib.at');if(atBtn){atBtn.style.opacity='.4';atBtn.style.pointerEvents='none'}for(const f of fl){const fd=new FormData();fd.append('file',f);try{const r=await fetch('/api/upload',{method:'POST',body:fd});const d=await r.json();if(!d.error){chAtt.push(d);rCAtt()}}catch(e){}}document.getElementById('chFI').value='';if(atBtn){atBtn.style.opacity='';atBtn.style.pointerEvents=''}}
 function rCAtt(){document.getElementById('chAtt').innerHTML=chAtt.map((f,i)=>`<div class="att-chip"><span class="att-ext">${(f.fileType||'').replace('.','')}</span><span>${esc(f.fileName)}</span><button class="att-x" onclick="chAtt.splice(${i},1);rCAtt()">&times;</button></div>`).join('')}
-async function sendMsg(){const inp=document.getElementById('chIn');const msg=inp.value.trim();if(!msg||isStr)return;const ak=document.getElementById('apiKey').value.trim();if(!ak){alert('Set your API key in the sidebar');return}const w=document.getElementById('wel');if(w)w.remove();appMsg('user',msg);chHist.push({role:'user',content:msg});inp.value='';inp.style.height='auto';const mel=document.getElementById('chMsg');const ar=document.createElement('div');ar.className='msg';ar.dataset.role='assistant';ar.innerHTML=`<div class="mc"><div class="mr">Security Assistant</div><div class="mb"><div class="typing"><span></span><span></span><span></span></div></div></div>`;mel.appendChild(ar);const bd=ar.querySelector('.mb');const scr=document.getElementById('chScr');scr.scrollTop=scr.scrollHeight;isStr=true;document.getElementById('chSnd').disabled=true;shSts('Searching Confluence & Jira...');
-try{const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:chHist,apiKey:ak,model:gMod(),product:document.getElementById('chatProduct').value,attachedFiles:chAtt})});const rd=res.body.getReader();const dec=new TextDecoder();let buf='',full='';while(true){const{value,done}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});const lns=buf.split('\n');buf=lns.pop();for(const ln of lns){if(ln.startsWith('data: ')){try{const ev=JSON.parse(ln.slice(6));if(ev.type==='text'){hdSts();full+=ev.text;bd.innerHTML=fmtMd(full);scr.scrollTop=scr.scrollHeight}else if(ev.type==='status'){shSts(ev.message)}else if(ev.type==='done'){hdSts();bd.innerHTML=fmtMd(full);const ac=document.createElement('div');ac.className='mact';ac.innerHTML=`<button class="ma-btn" onclick="cpMsg(this)" title="Copy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button><button class="ma-btn sv" onclick="openSave(this)" title="Save to answer bank">Save</button>`;ar.querySelector('.mc').appendChild(ac);ar.dataset.raw=full;ar.dataset.role='assistant'}else if(ev.type==='error'){hdSts();bd.innerHTML=`<span style="color:var(--rd)">Error: ${esc(ev.message)}</span>`}}catch{}}}}chHist.push({role:'assistant',content:full});saveConv()}catch(e){bd.innerHTML=`<span style="color:var(--rd)">${esc(e.message)}</span>`}
+async function sendMsg(){const inp=document.getElementById('chIn');const msg=inp.value.trim();if(!msg||isStr)return;const ak=localStorage.getItem('anthropic_api_key')||'';if(!ak){alert('Set your Claude API key in Admin → Authentication');return}const w=document.getElementById('wel');if(w)w.remove();appMsg('user',msg);chHist.push({role:'user',content:msg});inp.value='';inp.style.height='auto';const mel=document.getElementById('chMsg');const ar=document.createElement('div');ar.className='msg';ar.dataset.role='assistant';ar.innerHTML=`<div class="mc"><div class="mr">Security Assistant</div><div class="mb"><div class="typing"><span></span><span></span><span></span></div></div></div>`;mel.appendChild(ar);const bd=ar.querySelector('.mb');const scr=document.getElementById('chScr');scr.scrollTop=scr.scrollHeight;isStr=true;document.getElementById('chSnd').disabled=true;shSts('Searching Confluence & Jira...');
+try{const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:chHist,apiKey:ak,model:gMod(),product:document.getElementById('chatProduct').value,attachedFiles:chAtt,searchConfluence:document.getElementById('cfgSearchConf').checked,searchJira:document.getElementById('cfgSearchJira').checked})});const rd=res.body.getReader();const dec=new TextDecoder();let buf='',full='';while(true){const{value,done}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});const lns=buf.split('\n');buf=lns.pop();for(const ln of lns){if(ln.startsWith('data: ')){try{const ev=JSON.parse(ln.slice(6));if(ev.type==='text'){hdSts();full+=ev.text;bd.innerHTML=fmtMd(full);scr.scrollTop=scr.scrollHeight}else if(ev.type==='status'){shSts(ev.message)}else if(ev.type==='done'){hdSts();bd.innerHTML=fmtMd(full);const ac=document.createElement('div');ac.className='mact';ac.innerHTML=`<button class="ma-btn" onclick="cpMsg(this)" title="Copy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button><button class="ma-btn sv" onclick="openSave(this)" title="Save to answer bank">Save</button>`;ar.querySelector('.mc').appendChild(ac);ar.dataset.raw=full;ar.dataset.role='assistant'}else if(ev.type==='error'){hdSts();bd.innerHTML=`<span style="color:var(--rd)">Error: ${esc(ev.message)}</span>`}}catch{}}}}chHist.push({role:'assistant',content:full});saveConv()}catch(e){bd.innerHTML=`<span style="color:var(--rd)">${esc(e.message)}</span>`}
 isStr=false;document.getElementById('chSnd').disabled=false;chAtt=[];rCAtt();scr.scrollTop=scr.scrollHeight}
 function shSts(m){document.getElementById('chStsTx').textContent=m;document.getElementById('chSts').classList.add('on')}
 function hdSts(){document.getElementById('chSts').classList.remove('on')}
@@ -653,17 +917,18 @@ function mkSrcLink(cls,text){
 const e=esc(text);
 if(cls==='src-confluence'){const m=text.match(/(.+?)\s*\((\w+)\s*space\)/i);if(m)return`<a href="https://lmsportal.atlassian.net/wiki/search?text=${encodeURIComponent(m[1])}" target="_blank">${e}</a>`;return`<a href="https://lmsportal.atlassian.net/wiki/search?text=${encodeURIComponent(text)}" target="_blank">${e}</a>`}
 if(cls==='src-jira'){const m=text.match(/(ISC-\d+)/);if(m)return`<a href="https://lmsportal.atlassian.net/browse/${m[1]}" target="_blank">${e}</a>`;return e}
-if(cls==='src-local'){const fm=text.match(/(categories|products|policies|frameworks|clients)\/[^\s,)]+/);if(fm)return`<span title="Local file: security-questionnaire-bank/${fm[0]}" style="cursor:help;border-bottom:1px dotted var(--gn)">${e}</span>`;return`<span title="Local security answer bank" style="cursor:help">${e}</span>`}
+if(cls==='src-local'){const fm=text.match(/(categories|products|policies|frameworks|clients)\/[^\s,)]+/);if(fm)return`<span title="Local file: data/answer-bank/${fm[0]}" style="cursor:help;border-bottom:1px dotted var(--gn)">${e}</span>`;return`<span title="Local security answer bank" style="cursor:help">${e}</span>`}
 if(cls==='src-policy'){return`<span title="Policy document" style="cursor:help;border-bottom:1px dotted var(--yl)">${e}</span>`}
 return e}
 function fmtMd(t){
 // Split out sources section if present
+const showSources=localStorage.getItem('sq_cfgAutoSources')!=='false';
 let main=t,srcHtml='';
 const srcIdx=t.indexOf('---\n**Sources:');
 if(srcIdx===-1){const srcIdx2=t.indexOf('**Sources:');if(srcIdx2>-1){main=t.substring(0,srcIdx2);const srcText=t.substring(srcIdx2)
 const items=srcText.split('\n').filter(l=>l.startsWith('- ')).map(l=>{const txt=l.substring(2).trim();let cls='src-general';if(/\[Confluence\]/i.test(txt))cls='src-confluence';else if(/\[Local KB\]/i.test(txt))cls='src-local';else if(/\[Jira\]/i.test(txt))cls='src-jira';else if(/\[Policy\]/i.test(txt))cls='src-policy';const clean=txt.replace(/\[.*?\]\s*/,'');const linked=mkSrcLink(cls,clean);return`<li class="${cls}">${linked}</li>`});if(items.length)srcHtml=`<div class="sources-section"><strong>Sources</strong><ul>${items.join('')}</ul></div>`}}else{main=t.substring(0,srcIdx);const srcText=t.substring(srcIdx)
 const items=srcText.split('\n').filter(l=>l.startsWith('- ')).map(l=>{const txt=l.substring(2).trim();let cls='src-general';if(/\[Confluence\]/i.test(txt))cls='src-confluence';else if(/\[Local KB\]/i.test(txt))cls='src-local';else if(/\[Jira\]/i.test(txt))cls='src-jira';else if(/\[Policy\]/i.test(txt))cls='src-policy';const clean=txt.replace(/\[.*?\]\s*/,'');const linked=mkSrcLink(cls,clean);return`<li class="${cls}">${linked}</li>`});if(items.length)srcHtml=`<div class="sources-section"><strong>Sources</strong><ul>${items.join('')}</ul></div>`}
-return main.replace(/```(\w*)\n([\s\S]*?)```/g,'<pre><code>$2</code></pre>').replace(/`([^`]+)`/g,'<code>$1</code>').replace(/^### (.+)$/gm,'<h3>$1</h3>').replace(/^## (.+)$/gm,'<h2>$1</h2>').replace(/^# (.+)$/gm,'<h1>$1</h1>').replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/\*([^*]+)\*/g,'<em>$1</em>').replace(/^\|(.+)\|$/gm,m=>{const c=m.split('|').filter(x=>x.trim()!=='');if(c.every(x=>/^[\s-:]+$/.test(x)))return'';return'<tr>'+c.map(x=>`<td>${x.trim()}</td>`).join('')+'</tr>'}).replace(/(<tr>.*<\/tr>\n?)+/g,'<table>$&</table>').replace(/^- (.+)$/gm,'<li>$1</li>').replace(/(<li>.*<\/li>\n?)+/g,'<ul>$&</ul>').replace(/^> (.+)$/gm,'<blockquote>$1</blockquote>').replace(/\n\n/g,'</p><p>').replace(/\n/g,'<br>').replace(/^/,'<p>').replace(/$/,'</p>').replace(/<p><(h[123]|pre|ul|ol|table|blockquote)/g,'<$1').replace(/<\/(h[123]|pre|ul|ol|table|blockquote)><\/p>/g,'</$1>').replace(/<p><\/p>/g,'')+srcHtml}
+return main.replace(/```(\w*)\n([\s\S]*?)```/g,'<pre><code>$2</code></pre>').replace(/`([^`]+)`/g,'<code>$1</code>').replace(/^### (.+)$/gm,'<h3>$1</h3>').replace(/^## (.+)$/gm,'<h2>$1</h2>').replace(/^# (.+)$/gm,'<h1>$1</h1>').replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/\*([^*]+)\*/g,'<em>$1</em>').replace(/^\|(.+)\|$/gm,m=>{const c=m.split('|').filter(x=>x.trim()!=='');if(c.every(x=>/^[\s-:]+$/.test(x)))return'';return'<tr>'+c.map(x=>`<td>${x.trim()}</td>`).join('')+'</tr>'}).replace(/(<tr>.*<\/tr>\n?)+/g,'<table>$&</table>').replace(/^- (.+)$/gm,'<li>$1</li>').replace(/(<li>.*<\/li>\n?)+/g,'<ul>$&</ul>').replace(/^> (.+)$/gm,'<blockquote>$1</blockquote>').replace(/\n\n/g,'</p><p>').replace(/\n/g,'<br>').replace(/^/,'<p>').replace(/$/,'</p>').replace(/<p><(h[123]|pre|ul|ol|table|blockquote)/g,'<$1').replace(/<\/(h[123]|pre|ul|ol|table|blockquote)><\/p>/g,'</$1>').replace(/<p><\/p>/g,'')+(showSources?srcHtml:'')}
 const dz=document.getElementById('dropZone'),fi=document.getElementById('fileInput');dz.addEventListener('click',()=>fi.click());dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('over')});dz.addEventListener('dragleave',()=>dz.classList.remove('over'));dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('over');if(e.dataTransfer.files.length)hFile(e.dataTransfer.files[0])});fi.addEventListener('change',()=>{if(fi.files.length)hFile(fi.files[0])});
 // Global: prevent browser from opening/downloading files dropped outside explicit zones
 document.addEventListener('dragover',e=>e.preventDefault());document.addEventListener('drop',e=>e.preventDefault());
@@ -674,15 +939,19 @@ if(mTBox){mTBox.addEventListener('dragover',e=>{e.preventDefault();e.stopPropaga
 async function hFile(f){const dz=document.getElementById('dropZone');dz.classList.add('uploading');document.getElementById('fileName').textContent='';const fd=new FormData();fd.append('file',f);try{const r=await fetch('/api/upload',{method:'POST',body:fd});const d=await r.json();if(d.error){alert(d.error);return}upFile=d;document.getElementById('fileName').textContent=f.name;shCfg(d)}catch(e){alert(e.message)}finally{dz.classList.remove('uploading')}}
 function shCfg(d){document.getElementById('configCard').style.display='block';document.getElementById('fileTypeBadge').innerHTML=`<span class="ftb">${(d.fileType||'').replace('.','').toUpperCase()}</span> ${esc(d.fileName)}`;if(d.type==='spreadsheet'){document.getElementById('spreadsheetConfig').style.display='block';document.getElementById('documentConfig').style.display='none';const s=document.getElementById('sheetSelect');s.innerHTML='';d.sheets.forEach(sh=>{const o=document.createElement('option');o.value=sh.name;o.textContent=`${sh.name} (${sh.rowCount} rows)`;s.appendChild(o)});s.onchange=()=>updCols();updCols()}else{document.getElementById('spreadsheetConfig').style.display='none';document.getElementById('documentConfig').style.display='block';document.getElementById('docPreview').textContent=d.preview||'No preview';if(d.pageCount){document.getElementById('pageCountGroup').style.display='block';document.getElementById('pageCount').value=`${d.pageCount} pages`}}}
 function updCols(){const sn=document.getElementById('sheetSelect').value;const sh=upFile.sheets.find(s=>s.name===sn);if(!sh)return;const q=document.getElementById('questionCol'),i=document.getElementById('idCol');q.innerHTML='';i.innerHTML='';sh.columns.forEach(c=>{const o1=document.createElement('option');o1.value=c;o1.textContent=c;if(/question|query|requirement|control|description/i.test(c))o1.selected=true;q.appendChild(o1);const o2=document.createElement('option');o2.value=c;o2.textContent=c;if(/id|number|#|ref|index/i.test(c))o2.selected=true;i.appendChild(o2)});const tb=document.getElementById('previewTable');if(!sh.preview.length){tb.innerHTML='<tr><td>No data</td></tr>';return}tb.innerHTML='<thead><tr>'+sh.columns.map(c=>`<th>${esc(c)}</th>`).join('')+'</tr></thead><tbody>'+sh.preview.map(r=>'<tr>'+sh.columns.map(c=>`<td>${esc(String(r[c]||''))}</td>`).join('')+'</tr>').join('')+'</tbody>'}
-async function startProc(){const ak=document.getElementById('apiKey').value.trim();if(!ak){alert('Set API key');return}const b=document.getElementById('processBtn');b.disabled=true;b.textContent='Processing...';document.getElementById('progressSection').classList.add('vis');document.getElementById('progressLog').innerHTML='';const bd={filePath:upFile.filePath,sheetName:document.getElementById('sheetSelect')?.value,questionColumn:document.getElementById('questionCol')?.value,idColumn:document.getElementById('idCol')?.value,product:document.getElementById('productSelect')?.value||document.getElementById('docProductSelect')?.value,apiKey:ak};try{const r=await fetch('/api/process',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(bd)});const rd=r.body.getReader();const dc=new TextDecoder();let bf='';while(true){const{value,done}=await rd.read();if(done)break;bf+=dc.decode(value,{stream:true});const ls=bf.split('\n');bf=ls.pop();for(const l of ls){if(l.startsWith('data: ')){try{hPE(JSON.parse(l.slice(6)))}catch{}}}}}catch(e){lg('Error: '+e.message)}b.disabled=false;b.textContent='Process Questionnaire'}
+async function startProc(){const ak=localStorage.getItem('anthropic_api_key')||'';if(!ak){alert('Set your Claude API key in Admin → Authentication');return}const b=document.getElementById('processBtn');b.disabled=true;b.textContent='Processing...';document.getElementById('progressSection').classList.add('vis');document.getElementById('progressLog').innerHTML='';gtAdd('batch','Batch Processing','upload');const bd={filePath:upFile.filePath,sheetName:document.getElementById('sheetSelect')?.value,questionColumn:document.getElementById('questionCol')?.value,idColumn:document.getElementById('idCol')?.value,product:document.getElementById('productSelect')?.value||document.getElementById('docProductSelect')?.value,apiKey:ak};try{const r=await fetch('/api/process',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(bd)});const rd=r.body.getReader();const dc=new TextDecoder();let bf='';while(true){const{value,done}=await rd.read();if(done)break;bf+=dc.decode(value,{stream:true});const ls=bf.split('\n');bf=ls.pop();for(const l of ls){if(l.startsWith('data: ')){try{const ev=JSON.parse(l.slice(6));hPE(ev);if(ev.type==='progress')gtUpdate('batch',ev.percent,ev.step);if(ev.type==='complete')gtDone('batch');if(ev.type==='error')gtError('batch',ev.message)}catch{}}}}if(!_tasks['batch']||_tasks['batch'].status==='running')gtDone('batch')}catch(e){lg('Error: '+e.message);gtError('batch',e.message)}b.disabled=false;b.textContent='Process Questionnaire'}
 function hPE(ev){switch(ev.type){case'progress':document.getElementById('progressBar').style.width=ev.percent+'%';document.getElementById('progressText').textContent=ev.step;lg(ev.step);break;case'batch_complete':lg(`Batch ${ev.batchNum}/${ev.totalBatches} done`);break;case'complete':outFN=ev.outputFile;allRes=ev.answers;shRes(ev);lg('Done!');if(document.getElementById('autoSaveBank')?.checked)saveProcToBank();break;case'error':lg('ERROR: '+ev.message);break}}
 function lg(m){const el=document.getElementById('progressLog');el.innerHTML+=`<div>[${new Date().toLocaleTimeString()}] ${esc(m)}</div>`;el.scrollTop=el.scrollHeight}
-function shRes(d){document.getElementById('resultsSection').classList.add('vis');document.getElementById('statTotal').textContent=d.totalQuestions;document.getElementById('statHigh').textContent=d.highConfidence;document.getElementById('statMedium').textContent=d.mediumConfidence;document.getElementById('statLow').textContent=d.lowConfidence;rRT(d.answers)}
-function rRT(a){document.getElementById('resultsBody').innerHTML=a.map(x=>`<tr><td>${esc(String(x.id||''))}</td><td>${esc(x.question||'')}</td><td>${esc(x.answer||'')}</td><td>${esc(x.source||'')}</td><td><span class="badge ${x.confidence}">${x.confidence}</span></td></tr>`).join('')}
-function fRes(l,b){document.querySelectorAll('#resultsSection .fbtn').forEach(x=>x.classList.remove('on'));b.classList.add('on');rRT(l==='all'?allRes:allRes.filter(a=>a.confidence===l))}
+function shRes(d){document.getElementById('resultsSection').classList.add('vis');document.getElementById('statTotal').textContent=d.totalQuestions;document.getElementById('statHigh').textContent=d.highConfidence;document.getElementById('statMedium').textContent=d.mediumConfidence;document.getElementById('statLow').textContent=d.lowConfidence;
+/* Show flag summary if any */
+const fSum=document.getElementById('flagSummary');if(fSum){const parts=[];if(d.conflicts)parts.push(`<span style="color:var(--rd)">${d.conflicts} conflicting</span>`);if(d.noProductData)parts.push(`<span style="color:#e6a817">${d.noProductData} missing data</span>`);if(d.needsReview)parts.push(`<span style="color:#e6a817">${d.needsReview} needs review</span>`);if(d.crossProduct)parts.push(`<span style="color:#5ba8e6">${d.crossProduct} cross-product</span>`);fSum.innerHTML=parts.length?'Flags: '+parts.join(' · '):'';fSum.style.display=parts.length?'block':'none'}
+rRT(d.answers)}
+function rRT(a){document.getElementById('resultsBody').innerHTML=a.map(x=>{const fl=(x.flags||[]);const fBadges=fl.map(f=>f==='conflict'?'<span class="badge" style="background:#8b2020;font-size:9px;margin-left:3px">conflict</span>':f==='no-product-data'?'<span class="badge" style="background:#8b6914;font-size:9px;margin-left:3px">no data</span>':f==='needs-review'?'<span class="badge" style="background:#8b6914;font-size:9px;margin-left:3px">review</span>':f==='cross-product'?'<span class="badge" style="background:#2a5e8b;font-size:9px;margin-left:3px">cross-product</span>':'').join('');return`<tr${fl.includes('conflict')?' style="background:rgba(139,32,32,.08)"':fl.includes('no-product-data')?' style="background:rgba(139,105,20,.06)"':''}><td>${esc(String(x.id||''))}</td><td>${esc(x.question||'')}</td><td>${esc(x.answer||'')}</td><td>${esc(x.source||'')}${fBadges}</td><td><span class="badge ${x.confidence}">${x.confidence}</span></td></tr>`}).join('')}
+function fRes(l,b){document.querySelectorAll('#resultsSection .fbtn').forEach(x=>x.classList.remove('on'));b.classList.add('on');rRT(l==='all'?allRes:l==='flagged'?allRes.filter(a=>a.flags&&a.flags.length>0):allRes.filter(a=>a.confidence===l))}
 function dlFile(){if(outFN)window.location.href=`/api/download/${outFN}`}
 function resetUp(){upFile=null;outFN='';allRes=[];document.getElementById('fileName').textContent='';document.getElementById('configCard').style.display='none';document.getElementById('progressSection').classList.remove('vis');document.getElementById('resultsSection').classList.remove('vis');document.getElementById('progressBar').style.width='0%';document.getElementById('progressLog').innerHTML='';document.getElementById('fileInput').value=''}
 async function ldBatchFw(){try{const r=await fetch('/api/bank/frameworks');const fs=await r.json();const sel=document.getElementById('batchFramework');sel.innerHTML='<option value="">None (Custom)</option>'+fs.map(f=>`<option value="${esc(f.name)}">${esc(f.name)}</option>`).join('');sel._fwData=fs}catch{}}
+async function ldMigFw(){try{const r=await fetch('/api/bank/frameworks');const fs=await r.json();const sel=document.getElementById('migFramework');if(!sel)return;sel.innerHTML='<option value="">Any Framework</option>'+fs.map(f=>f.versions.map(v=>`<option value="${esc(f.name+'|'+v)}">${esc(f.name)} — ${esc(v)}</option>`)).flat().join('');sel._fwData=fs}catch{}}
 function updBatchVer(){const sel=document.getElementById('batchFramework');const fs=sel._fwData||[];const fw=fs.find(f=>f.name===sel.value);const ver=document.getElementById('batchVersion');ver.innerHTML=fw?(fw.versions||[]).map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join(''):'<option value="">—</option>'}
 async function saveProcToBank(){if(!allRes||!allRes.length){alert('No results to save');return}const fw=document.getElementById('batchFramework')?.value||'';const ver=document.getElementById('batchVersion')?.value||'';const prod=document.getElementById('productSelect')?.value||document.getElementById('docProductSelect')?.value||'general';const btn=document.getElementById('saveBankBtn');btn.disabled=true;btn.textContent='Saving...';try{const r=await fetch('/api/process/save-to-bank',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({answers:allRes,framework:fw,version:ver,product:prod,fileName:upFile?.fileName||'batch-process'})});const d=await r.json();if(d.success){btn.textContent='Saved!';btn.style.background='var(--gn)';lg('Saved to bank: '+d.path);setTimeout(()=>{btn.textContent='Save to Bank';btn.disabled=false},3000)}else{alert(d.error||'Save failed');btn.disabled=false;btn.textContent='Save to Bank'}}catch(e){alert(e.message);btn.disabled=false;btn.textContent='Save to Bank'}}
 // Ticket list
@@ -740,7 +1009,9 @@ ${t.comments?.length?`<div class="tkd-section"><div class="tkd-label">Recent Com
 <a class="tkd-btn primary" href="${t.url}" target="_blank">Open in Jira</a>
 <button class="tkd-btn sec" onclick="closeTkDetail()">Close</button>
 </div>
-</div>`}catch(e){dp.innerHTML='<div style="padding:20px;color:var(--rd);font-size:12px">'+esc(e.message)+'</div>'}}
+</div>`;
+} catch(e) { dp.innerHTML='<div style="padding:20px;color:var(--rd);font-size:12px">'+esc(e.message)+'</div>'; }
+}
 
 function closeTkDetail(){selTk=null;rTkList();document.getElementById('calTkDetail').style.display='none'}
 function toggleCalMax(){document.body.classList.toggle('cal-max')}
@@ -751,7 +1022,7 @@ async function ldCal(){const ms=`${cY}-${String(cM).padStart(2,'0')}`;document.g
 function rCal(){const g=document.getElementById('calGrid');const sf=document.getElementById('calTkFilter')?.value||'all';const calAsgn=document.getElementById('calTkAssignee')?.value||'';const calType=document.getElementById('calTkType')?.value||'';const fd=new Date(cY,cM-1,1).getDay();const dm=new Date(cY,cM,0).getDate();const tod=new Date().toISOString().slice(0,10);let h=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((d,i)=>`<div class="cdh${i===0||i===6?' cdh-we':''}">${d}</div>`).join('');const pd=new Date(cY,cM-1,0).getDate();for(let i=fd-1;i>=0;i--)h+=`<div class="cd om"><div class="cdn">${pd-i}</div></div>`;for(let d=1;d<=dm;d++){const ds=`${cY}-${String(cM).padStart(2,'0')}-${String(d).padStart(2,'0')}`;const dow=new Date(cY,cM-1,d).getDay();let dt=cTk.filter(t=>t.date===ds);if(sf==='open')dt=dt.filter(t=>t.statusCategory!=='done');else if(sf!=='all')dt=dt.filter(t=>t.status===sf);if(calAsgn)dt=dt.filter(t=>t.assignee===calAsgn);if(calType)dt=dt.filter(t=>t.issueType===calType);const isWe=dow===0||dow===6;h+=`<div class="cd ${ds===tod?'tod':''}${isWe?' cd-we':''}"><div class="cdn">${d}</div>`;dt.forEach(t=>{const sc=t.statusCategory==='done'?'sd':t.statusCategory==='indeterminate'?'sp':'st';h+=`<div class="ct ${sc}" onclick='shTD(${JSON.stringify(t).replace(/'/g,"&#39;")})' title="${esc(t.key+': '+t.summary)}">${esc(t.key)}</div>`});h+='</div>'}const tc=fd+dm;const rm=tc%7===0?0:7-(tc%7);for(let i=1;i<=rm;i++)h+=`<div class="cd om"><div class="cdn">${i}</div></div>`;g.innerHTML=h}
 function shTD(t){document.getElementById('cDet').innerHTML=`<h3>${esc(t.key)}: ${esc(t.summary)}</h3><div class="cdr"><span class="ll">Status</span><span>${esc(t.status)}</span></div><div class="cdr"><span class="ll">Assignee</span><span>${esc(t.assignee)}</span></div><div class="cdr"><span class="ll">Priority</span><span>${esc(t.priority)}</span></div><div class="cdr"><span class="ll">Due Date</span><span>${t.duedate||'Not set'}</span></div><div class="cdr"><span class="ll">Created</span><span>${t.created?.slice(0,10)||''}</span></div><a href="https://lmsportal.atlassian.net/browse/${t.key}" target="_blank" style="display:block;text-align:center;margin-top:10px;color:var(--ac);font-size:12px">Open in Jira &rarr;</a><button class="ccl" onclick="document.getElementById('cMod').classList.remove('vis')">Close</button>`;document.getElementById('cMod').classList.add('vis')}
 let iFile=null,iType='',iEnt=[],iCats=[],iFWs=[];const idz=document.getElementById('iDZ'),ifi=document.getElementById('iFI');idz.addEventListener('click',()=>ifi.click());idz.addEventListener('dragover',e=>{e.preventDefault();idz.classList.add('over')});idz.addEventListener('dragleave',()=>idz.classList.remove('over'));idz.addEventListener('drop',e=>{e.preventDefault();idz.classList.remove('over');if(e.dataTransfer.files.length)hIF(e.dataTransfer.files[0])});ifi.addEventListener('change',()=>{if(ifi.files.length)hIF(ifi.files[0])});
-async function hIF(f){const dz=document.getElementById('iDZ');dz.classList.add('uploading');document.getElementById('iFN').textContent='';const fd=new FormData();fd.append('file',f);try{const r=await fetch('/api/upload',{method:'POST',body:fd});iFile=await r.json();if(iFile.error){alert(iFile.error);return}document.getElementById('iFN').textContent=f.name;
+async function hIF(f){const dz=document.getElementById('iDZ');dz.classList.add('uploading');const ldtxt=dz.querySelector('.dz-ldtxt');if(ldtxt)ldtxt.textContent=`Uploading ${f.name} (${(f.size/1024).toFixed(0)} KB)...`;document.getElementById('iFN').textContent='';const fd=new FormData();fd.append('file',f);try{const r=await fetch('/api/upload',{method:'POST',body:fd});iFile=await r.json();if(iFile.error){alert(iFile.error);return}document.getElementById('iFN').textContent=f.name;
 /* Show file info summary */
 const info=document.getElementById('iFileInfo');info.style.display='block';
 if(iFile.type==='spreadsheet'&&iFile.sheets?.length>0){const totalRows=iFile.sheets.reduce((s,sh)=>s+sh.rowCount,0);info.innerHTML=`<div style="font-size:11px;color:var(--gn);padding:4px 0">&#x2705; <b>${iFile.sheets.length}</b> sheet(s) detected: ${iFile.sheets.map(s=>'<b>'+esc(s.name)+'</b> ('+s.rowCount+' rows)').join(', ')} &mdash; <b>${totalRows}</b> total rows</div>`}
@@ -760,11 +1031,29 @@ else{info.innerHTML=`<div style="font-size:11px;color:var(--gn);padding:4px 0">&
 document.getElementById('iS2').style.display='block';document.getElementById('iSuc').style.display='none'}catch(e){alert(e.message)}finally{document.getElementById('iDZ').classList.remove('uploading')}}
 async function ldImpOpts(){const[ps,fs]=await Promise.all([fetch('/api/products').then(r=>r.json()),fetch('/api/bank/frameworks').then(r=>r.json())]);iFWs=fs;document.getElementById('iProd').innerHTML=ps.map(p=>`<option value="${p}">${p}</option>`).join('');const fw=document.getElementById('iFW');fw.innerHTML=fs.map(f=>`<option value="${f.name}">${f.name}</option>`).join('');fw.onchange=()=>{const f=fs.find(x=>x.name===fw.value);document.getElementById('iVer').innerHTML=(f?.versions||[]).map(v=>`<option value="${v}">${v}</option>`).join('')};if(fs.length)fw.dispatchEvent(new Event('change'))}
 function sIT(t,b){iType=t;document.querySelectorAll('.itb').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');document.getElementById('iSS').style.display='block';document.getElementById('iPG').style.display=['product-override','framework'].includes(t)?'block':'none';document.getElementById('iFG').style.display=t==='framework'?'block':'none';document.getElementById('iVG').style.display=t==='framework'?'block':'none'}
-function resetImp(){iFile=null;iType='';document.getElementById('iFN').textContent='';document.getElementById('iFileInfo').style.display='none';document.getElementById('iS2').style.display='none';document.getElementById('iSS').style.display='none';document.getElementById('iSuc').style.display='none';document.querySelectorAll('.itb').forEach(x=>x.classList.remove('sel'));document.getElementById('iFI').value=''}
-async function subImpFile(){if(!iType){alert('Select a destination type');return}if(!iFile?.filePath){alert('Upload a file first');return}try{const r=await fetch('/api/bank/import-file',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:iType,product:document.getElementById('iProd')?.value||'',framework:document.getElementById('iFW')?.value||'',version:document.getElementById('iVer')?.value||'',filePath:iFile.filePath,fileName:iFile.fileName||'unknown'})});const d=await r.json();if(d.success){document.getElementById('iSuc').style.display='block';document.getElementById('iSuc').innerHTML=`<div class="isuc"><div style="font-size:24px;margin-bottom:8px">&#x2705;</div><div style="font-weight:600;margin-bottom:4px">File imported successfully</div><div style="font-size:11px;color:var(--tx2)">Saved to: ${esc(d.path)}</div></div>`;document.getElementById('iS2').style.display='none';document.getElementById('iFileInfo').style.display='none'}else alert(d.error||'Failed')}catch(e){alert(e.message)}}
+function resetImp(){iFile=null;iType='';document.getElementById('iFN').textContent='';document.getElementById('iFileInfo').style.display='none';document.getElementById('iS2').style.display='none';document.getElementById('iSS').style.display='none';document.getElementById('iProgress').style.display='none';document.getElementById('iSuc').style.display='none';document.querySelectorAll('.itb').forEach(x=>x.classList.remove('sel'));document.getElementById('iFI').value=''}
+async function subImpFile(){if(!iType){alert('Select a destination type');return}if(!iFile?.filePath){alert('Upload a file first');return}
+const selProd=document.getElementById('iProd')?.value||'';
+const selFW=document.getElementById('iFW')?.value||'';
+const selVer=document.getElementById('iVer')?.value||'';
+if(iType==='product-override'&&!selProd){alert('Please select a product');return}
+/* Show import progress overlay */
+const impLabel=iType==='product-override'?'Import → '+selProd:iType==='framework'?'Import → '+selFW:'Import → Answer Bank';
+gtAdd('import',impLabel,'import');
+const iS2=document.getElementById('iS2');const iProg=document.getElementById('iProgress');
+document.getElementById('iSS').style.display='none';
+iProg.style.display='block';iProg.innerHTML='<div class="imp-loading"><div class="imp-spin"></div><div class="imp-lt">Importing file to answer bank...</div><div class="imp-pb"><div class="imp-pf" id="impBar"></div></div><div class="imp-ps" id="impStatus">Preparing upload...</div></div>';
+/* Animate progress bar */
+const bar=document.getElementById('impBar');const status=document.getElementById('impStatus');
+let pct=0;const pInt=setInterval(()=>{if(pct<90){pct+=Math.random()*15;if(pct>90)pct=90;bar.style.width=pct+'%';gtUpdate('import',pct);if(pct>20)status.textContent='Copying file to destination...';if(pct>50)status.textContent='Saving to answer bank...';if(pct>75)status.textContent='Finalizing...'}},300);
+try{const r=await fetch('/api/bank/import-file',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:iType,product:selProd,framework:selFW,version:selVer,filePath:iFile.filePath,fileName:iFile.fileName||'unknown'})});const d=await r.json();clearInterval(pInt);
+if(d.success){bar.style.width='100%';status.textContent='Complete!';gtDone('import');
+setTimeout(()=>{iProg.style.display='none';document.getElementById('iSuc').style.display='block';document.getElementById('iSuc').innerHTML=`<div class="isuc"><div style="font-size:32px;margin-bottom:10px">&#x2705;</div><div style="font-weight:600;font-size:15px;margin-bottom:6px">File imported successfully</div><div style="font-size:12px;color:var(--tx2);margin-bottom:4px">Saved to: <span style="color:var(--ac)">${esc(d.path)}</span></div><div style="font-size:11px;color:var(--tx3);margin-bottom:14px">${iFile.fileName||'File'} &rarr; Answer Bank</div><button class="bb sec" style="margin-top:4px" onclick="resetImp()">Import Another</button></div>`;document.getElementById('iFileInfo').style.display='none';iS2.style.display='none'},600)}
+else{clearInterval(pInt);gtError('import',d.error||'Unknown error');iProg.innerHTML=`<div class="imp-loading" style="border-color:var(--rd)"><div style="font-size:24px;margin-bottom:8px">&#x274C;</div><div style="color:var(--rd);font-weight:600;margin-bottom:4px">Import failed</div><div style="font-size:12px;color:var(--tx2)">${esc(d.error||'Unknown error')}</div><button class="bb sec" style="margin-top:12px" onclick="resetImp()">Try Again</button></div>`}}
+catch(e){clearInterval(pInt);gtError('import',e.message);iProg.innerHTML=`<div class="imp-loading" style="border-color:var(--rd)"><div style="font-size:24px;margin-bottom:8px">&#x274C;</div><div style="color:var(--rd);font-weight:600;margin-bottom:4px">Import failed</div><div style="font-size:12px;color:var(--tx2)">${esc(e.message)}</div><button class="bb sec" style="margin-top:12px" onclick="resetImp()">Try Again</button></div>`}}
 let mSF=null,mTF=null,mMaps=[],mSessionId=null;
 async function hMF(t,f){if(!f)return;const box=document.getElementById(t==='source'?'mSB':'mTB');box.classList.add('uploading');document.getElementById(t==='source'?'mSN':'mTN').textContent='Uploading...';document.getElementById(t==='source'?'mSC':'mTC').textContent='';const fd=new FormData();fd.append('file',f);try{const r=await fetch('/api/upload',{method:'POST',body:fd});const d=await r.json();if(d.error){alert(d.error);document.getElementById(t==='source'?'mSN':'mTN').textContent='Select '+(t==='source'?'source':'target')+' file';return}box.classList.remove('uploading');box.classList.add('ld');document.getElementById(t==='source'?'mSN':'mTN').textContent=f.name;const tr=d.sheets?.reduce((s,x)=>s+x.rowCount,0)||0;document.getElementById(t==='source'?'mSC':'mTC').textContent=`${tr} rows`;if(t==='source')mSF=f;else mTF=f;document.getElementById('migBtn').disabled=!(mSF&&mTF)}catch(e){alert(e.message);document.getElementById(t==='source'?'mSN':'mTN').textContent='Select '+(t==='source'?'source':'target')+' file'}finally{box.classList.remove('uploading')}}
-async function startMig(){const ak=document.getElementById('apiKey').value.trim();if(!ak){document.getElementById('apb').classList.add('open');document.getElementById('apiKey').focus();alert('Please enter your Anthropic API key in the sidebar (bottom left).');return}if(!mSF||!mTF){alert('Please select both source and target files.');return}const b=document.getElementById('migBtn');b.disabled=true;b.classList.add('running');b.textContent='Migrating...';document.getElementById('migForm').style.display='none';const prg=document.getElementById('migPrg');prg.classList.add('vis');document.getElementById('migRes').style.display='none';setTimeout(()=>prg.scrollIntoView({behavior:'smooth',block:'nearest'}),100);const fd=new FormData();fd.append('sourceFile',mSF);fd.append('targetFile',mTF);fd.append('apiKey',ak);try{const r=await fetch('/api/migrate',{method:'POST',body:fd});const rd=r.body.getReader();const dc=new TextDecoder();let bf='';while(true){const{value,done}=await rd.read();if(done)break;bf+=dc.decode(value,{stream:true});const ls=bf.split('\n');bf=ls.pop();for(const l of ls){if(l.startsWith('data: ')){try{const ev=JSON.parse(l.slice(6));if(ev.type==='progress'){document.getElementById('migBar').style.width=ev.percent+'%';document.getElementById('migPT').textContent=ev.step}else if(ev.type==='complete'){mMaps=ev.mappings;mSessionId=ev.sessionId||null;shMR(ev)}else if(ev.type==='error')alert(ev.message)}catch{}}}}}catch(e){alert(e.message)}b.disabled=false;b.classList.remove('running');b.textContent='Start Migration'}
+async function startMig(){const ak=localStorage.getItem('anthropic_api_key')||'';if(!ak){alert('Set your Claude API key in Admin → Authentication');return}if(!mSF||!mTF){alert('Please select both source and target files.');return}const b=document.getElementById('migBtn');b.disabled=true;b.classList.add('running');b.textContent='Migrating...';document.getElementById('migForm').style.display='none';const prg=document.getElementById('migPrg');prg.classList.add('vis');document.getElementById('migRes').style.display='none';setTimeout(()=>prg.scrollIntoView({behavior:'smooth',block:'nearest'}),100);gtAdd('migrate','HECVAT Migration','migrate');const fd=new FormData();fd.append('sourceFile',mSF);fd.append('targetFile',mTF);fd.append('apiKey',ak);try{const r=await fetch('/api/migrate',{method:'POST',body:fd});const rd=r.body.getReader();const dc=new TextDecoder();let bf='';while(true){const{value,done}=await rd.read();if(done)break;bf+=dc.decode(value,{stream:true});const ls=bf.split('\n');bf=ls.pop();for(const l of ls){if(l.startsWith('data: ')){try{const ev=JSON.parse(l.slice(6));if(ev.type==='progress'){document.getElementById('migBar').style.width=ev.percent+'%';document.getElementById('migPT').textContent=ev.step;gtUpdate('migrate',ev.percent,ev.step)}else if(ev.type==='complete'){mMaps=ev.mappings;mSessionId=ev.sessionId||null;shMR(ev);gtDone('migrate')}else if(ev.type==='error'){alert(ev.message);gtError('migrate',ev.message)}}catch{}}}}}catch(e){alert(e.message);gtError('migrate',e.message)}b.disabled=false;b.classList.remove('running');b.textContent='Start Migration'}
 function shMR(d){document.getElementById('migForm').style.display='none';document.getElementById('migPrg').classList.remove('vis');const _mr=document.getElementById('migRes');_mr.style.display='block';_mr.classList.remove('anim');void _mr.offsetWidth;_mr.classList.add('anim');document.getElementById('migT').textContent=d.targetCount;document.getElementById('migH').textContent=d.mappings.filter(m=>m.matchConfidence==='high').length;document.getElementById('migM').textContent=d.mappings.filter(m=>m.matchConfidence==='medium').length;document.getElementById('migL').textContent=d.mappings.filter(m=>m.matchConfidence==='low'||m.matchConfidence==='none').length;rMM(d.mappings)}
 function rMM(ms){document.getElementById('mMap').innerHTML=`<div class="mmr hd"><div>ID</div><div>Target Question</div><div>Match</div><div>Answer</div></div>`+ms.map(m=>`<div class="mmr"><div style="font-weight:600;font-size:10px">${esc(m.targetId||'')}</div><div><div class="mq">${esc(m.targetQuestion||'')}</div>${m.sourceId?`<div style="font-size:9px;color:var(--tx3);margin-top:2px">From: [${esc(m.sourceId)}]</div>`:''}</div><div><span class="badge ${m.matchConfidence}">${m.matchConfidence}</span></div><div>${m.migratedAnswer?`<div class="maa">${esc(m.migratedAnswer.substring(0,180))}${m.migratedAnswer.length>180?'...':''}</div>`:'<span style="color:var(--tx3);font-size:10px">No answer</span>'}${m.notes?`<div style="font-size:9px;color:var(--tx3);margin-top:1px">${esc(m.notes)}</div>`:''}</div></div>`).join('')}
 function fMig(l,b){document.querySelectorAll('#migRes .fbtn').forEach(x=>x.classList.remove('on'));b.classList.add('on');rMM(l==='all'?mMaps:mMaps.filter(m=>m.matchConfidence===l))}
@@ -803,7 +1092,7 @@ const today=new Date().toISOString().slice(0,10);
 const overdue=t.duedate&&t.duedate<today;
 return`<div class="kb-card" onclick="showTkDetail('${t.key}')">
 <div class="kb-card-title">${esc(t.summary)}</div>
-<div class="kb-card-labels">${t.issueType?`<span class="kb-card-label" style="background:rgba(245,158,11,.12);color:var(--yl)">${esc(t.issueType)}</span>`:''}${t.labels.map(l=>`<span class="kb-card-label">${esc(l)}</span>`).join('')}</div>
+<div class="kb-card-labels">${t.issueType?`<span class="kb-card-label" style="background:rgba(200,168,50,.12);color:var(--yl)">${esc(t.issueType)}</span>`:''}${t.labels.map(l=>`<span class="kb-card-label">${esc(l)}</span>`).join('')}</div>
 ${t.duedate?`<div class="kb-card-due ${overdue?'overdue':''}">${overdue?'&#9888; ':''}${t.duedate}</div>`:''}
 <div class="kb-card-bottom">
 <span class="kb-card-key">${esc(t.key)}</span>
@@ -815,7 +1104,7 @@ ${t.duedate?`<div class="kb-card-due ${overdue?'overdue':''}">${overdue?'&#9888;
 // Theme
 function setTheme(mode,btn){
 localStorage.setItem('sq_theme',mode);
-document.querySelectorAll('.theme-btn').forEach(b=>b.classList.remove('active'));
+document.querySelectorAll('.theme-toggle button').forEach(b=>b.classList.remove('active'));
 if(btn)btn.classList.add('active');
 if(mode==='system'){const dk=window.matchMedia('(prefers-color-scheme:dark)').matches;document.documentElement.className=dk?'':'light'}
 else if(mode==='light')document.documentElement.className='light';
@@ -824,8 +1113,7 @@ else document.documentElement.className=''}
 window.matchMedia('(prefers-color-scheme:dark)').addEventListener('change',()=>{if(localStorage.getItem('sq_theme')==='system')setTheme('system',document.getElementById('thSys'))})})();
 
 // Populate all Jira dropdowns
-async function ldBoardAssignees(){/* Board and calendar now read from ticket list filters directly */}
-async function ldIssueTypes(){try{const r=await fetch('/api/jira/issuetypes');const types=await r.json();['calTkType','boardType'].forEach(id=>{const sel=document.getElementById(id);if(!sel)return;const cur=sel.value;sel.innerHTML='<option value="">All Types</option>'+types.map(t=>`<option value="${esc(t)}"${t===cur?' selected':''}>${esc(t)}</option>`).join('')})}catch{}}
+async function ldIssueTypes(){try{const r=await fetch('/api/jira/issuetypes');const types=await r.json();['calTkType'].forEach(id=>{const sel=document.getElementById(id);if(!sel)return;const cur=sel.value;sel.innerHTML='<option value="">All Types</option>'+types.map(t=>`<option value="${esc(t)}"${t===cur?' selected':''}>${esc(t)}</option>`).join('')})}catch{}}
 async function ldStatuses(){try{const r=await fetch('/api/jira/statuses');const statuses=await r.json();const sel=document.getElementById('calTkFilter');const cur=sel.value;sel.innerHTML='<option value="all"'+(cur==='all'?' selected':'')+'>All Statuses</option>'+statuses.map(s=>`<option value="${esc(s.name)}"${s.name===cur?' selected':''}>${esc(s.name)}</option>`).join('')}catch{}}
 
 // Save to bank
@@ -852,6 +1140,80 @@ if(d.success){res.className='save-res ok';res.textContent=`Saved to ${d.path}`;s
 else{res.className='save-res err';res.textContent=d.error||'Failed'}}catch(e){const res=document.getElementById('saveRes');res.style.display='block';res.className='save-res err';res.textContent=e.message}}
 
 function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+
+// --- Admin Settings ---
+function swAdminTab(tab,btn){document.querySelectorAll('.admin-tab').forEach(b=>b.classList.remove('on'));btn.classList.add('on');document.querySelectorAll('.admin-section').forEach(s=>s.classList.remove('on'));document.getElementById({knowledge:'adminKnowledge',quality:'adminQuality',system:'adminSystem',products:'adminProducts',frameworks:'adminFrameworks',advanced:'adminAdvanced'}[tab]).classList.add('on');if(tab==='products')renderProductList();if(tab==='frameworks')renderFWList()}
+
+async function loadAdminSettings(){
+// Load AI model
+const m=localStorage.getItem('sq_model')||'claude-opus-4-20250514';
+const modSel=document.getElementById('cfgAIModel');if(modSel)modSel.value=m;
+// Confidence threshold
+const thr=document.getElementById('cfgConfThreshold');if(thr){thr.value=localStorage.getItem('sq_conf_threshold')||'60';document.getElementById('cfgConfThreshVal').textContent=thr.value+'%';thr.oninput=()=>{document.getElementById('cfgConfThreshVal').textContent=thr.value+'%';localStorage.setItem('sq_conf_threshold',thr.value)}}
+// Checkboxes — load saved state
+['cfgAutoSources','cfgSearchConf','cfgSearchJira'].forEach(id=>{const cb=document.getElementById(id);if(!cb)return;const saved=localStorage.getItem('sq_'+id);if(saved!==null)cb.checked=saved==='true';cb.onchange=()=>localStorage.setItem('sq_'+id,cb.checked)});
+// Atlassian fields — restore from localStorage
+const atlUrl=document.getElementById('cfgAtlUrl');if(atlUrl){const sv=localStorage.getItem('sq_atl_url');if(sv)atlUrl.value=sv}
+const atlEmail=document.getElementById('cfgAtlEmail');if(atlEmail){const sv=localStorage.getItem('sq_atl_email');if(sv)atlEmail.value=sv}
+const atlProject=document.getElementById('cfgAtlProject');if(atlProject){const sv=localStorage.getItem('sq_jira_project');if(sv)atlProject.value=sv}
+// Bank stats
+refreshBankStats();
+// System status
+checkSystemStatus();
+}
+
+
+async function saveAtlassianConfig(){const url=document.getElementById('cfgAtlUrl').value.trim();const email=document.getElementById('cfgAtlEmail').value.trim();const token=document.getElementById('cfgAtlToken').value.trim();const project=document.getElementById('cfgAtlProject').value.trim();const res=document.getElementById('cfgAtlResult');
+if(!url||!email){res.style.display='flex';res.className='admin-result err';res.textContent='Instance URL and email are required';return}
+localStorage.setItem('sq_atl_url',url);localStorage.setItem('sq_atl_email',email);localStorage.setItem('sq_jira_project',project||'ISC');
+if(!token){res.style.display='flex';res.className='admin-result warn';res.textContent='Enter API token to save new credentials';return}
+res.style.display='flex';res.className='admin-result warn';res.textContent='Authenticating...';
+try{const r=await fetch('/api/atlassian/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({base:url,email,token,project:project||'ISC'})});const d=await r.json();if(r.ok){res.className='admin-result ok';res.textContent=d.message||'Connected successfully';document.getElementById('cfgAtlToken').value='';document.getElementById('cfgAtlToken').placeholder='API token saved — only enter to change';if(d.project)document.getElementById('sysProject').textContent=d.project;localStorage.setItem('sq_jira_project',d.project||project);checkSystemStatus()}else{res.className='admin-result err';res.textContent=d.error||'Authentication failed'}}catch(e){res.className='admin-result err';res.textContent=e.message}}
+
+async function testAtlassianConn(){const res=document.getElementById('cfgAtlResult');res.style.display='flex';res.className='admin-result warn';res.textContent='Testing connections...';
+let msgs=[];
+try{const r=await fetch('/api/confluence/test',{method:'POST'});const d=await r.json();msgs.push(d.success?'Confluence: Connected'+(d.spaces?.length?' ('+d.spaces.length+' spaces)':''):'Confluence: '+(d.error||'Failed'))}catch{msgs.push('Confluence: Not reachable')}
+try{const r=await fetch('/api/jira/test',{method:'POST'});const d=await r.json();msgs.push(d.success?'Jira: '+d.message:'Jira: '+(d.error||'Failed'))}catch{msgs.push('Jira: Not reachable')}
+const allOk=msgs.every(m=>m.includes('Connected')||m.includes('Connected as'));
+res.className=allOk?'admin-result ok':'admin-result warn';res.textContent=msgs.join(' | ')}
+
+let _bankStats=null;
+async function refreshBankStats(){try{const r=await fetch('/api/debug/bank-stats');_bankStats=await r.json();const f=_bankStats.files||{};document.getElementById('bankProdCount').textContent=f.products||0;document.getElementById('bankCatCount').textContent=f.categories||0;document.getElementById('bankPolCount').textContent=f.policies||0;document.getElementById('bankFWCount').textContent=f.frameworks||0;document.getElementById('bankPQCount').textContent=f.pastQuestionnaires||0;document.getElementById('bankTotalFiles').textContent=_bankStats.totalFiles||0}catch{}}
+function toggleBankFiles(){const el=document.getElementById('bankFileList');if(el.style.display!=='none'){el.style.display='none';return}if(!_bankStats?.fileList?.length){el.style.display='block';el.textContent='No files in answer bank';return}el.style.display='block';el.innerHTML=_bankStats.fileList.map(f=>`<div style="padding:2px 0;border-bottom:1px solid var(--bd)">${esc(f)}</div>`).join('')}
+
+async function checkSystemStatus(){
+// Server is always OK if we can call this
+document.getElementById('sysServer').textContent='Running';document.getElementById('sysServer').className='admin-status-badge ok';
+// Confluence — update both auth tab and system status tab badges
+try{const r=await fetch('/api/confluence/test',{method:'POST'});const d=await r.json();
+['sysConfluence','sysConfluence2'].forEach(id=>{const el=document.getElementById(id);if(!el)return;if(d.success){el.textContent='Connected';el.className='admin-status-badge ok'}else{el.textContent='Error';el.className='admin-status-badge err'}})}catch{['sysConfluence','sysConfluence2'].forEach(id=>{const el=document.getElementById(id);if(!el)return;el.textContent='Not configured';el.className='admin-status-badge warn'})}
+// Jira
+try{const r=await fetch('/api/jira/test',{method:'POST'});const d=await r.json();
+['sysJira','sysJira2'].forEach(id=>{const el=document.getElementById(id);if(!el)return;if(d.success){el.textContent='Connected';el.className='admin-status-badge ok'}else{el.textContent='Error';el.className='admin-status-badge err'}})}catch{['sysJira','sysJira2'].forEach(id=>{const el=document.getElementById(id);if(!el)return;el.textContent='Not configured';el.className='admin-status-badge warn'})}
+// Project key
+try{const r=await fetch('/api/atlassian/project');const d=await r.json();const el=document.getElementById('sysProject');if(el){el.textContent=d.project||'ISC';el.className='admin-status-badge ok'}const inp=document.getElementById('cfgAtlProject');if(inp&&d.project)inp.value=d.project}catch{}
+// Bank
+try{const r=await fetch('/api/debug/bank-stats');const d=await r.json();const el=document.getElementById('sysBank');el.textContent=`${d.totalFiles} files loaded`;el.className='admin-status-badge ok'}catch{document.getElementById('sysBank').textContent='Error';document.getElementById('sysBank').className='admin-status-badge err'}
+// Claude API
+const ak=localStorage.getItem('anthropic_api_key');
+const setAI=(txt,cls)=>{['sysAI','sysAI2'].forEach(id=>{const el=document.getElementById(id);if(el){el.textContent=txt;el.className='admin-status-badge '+cls}})};
+if(ak){setAI('Verifying...','warn');
+try{const r=await fetch('/api/test-api-key',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:ak})});const d=await r.json();if(d.success){setAI('Connected','ok')}else{setAI(d.error||'Invalid key','err')}}catch{setAI('Error','err')}}
+else{setAI('No API key','warn')}
+// Advanced fields
+document.getElementById('cfgBankPath').value='data/answer-bank/';document.getElementById('cfgOutputPath').value='data/output/';document.getElementById('cfgPort').value=location.port||'3456'}
+
+/* ── Global Task Tracker ── */
+const _tasks={};
+function gtAdd(id,label,tab){_tasks[id]={label,tab,pct:0,status:'running'};gtRender()}
+function gtUpdate(id,pct,statusText){if(!_tasks[id])return;_tasks[id].pct=pct;if(statusText)_tasks[id].statusText=statusText;gtRender()}
+function gtDone(id){if(!_tasks[id])return;_tasks[id].status='done';_tasks[id].pct=100;gtRender();setTimeout(()=>{delete _tasks[id];gtRender()},4000);refreshBankStats()}
+function gtError(id,msg){if(!_tasks[id])return;_tasks[id].status='error';_tasks[id].statusText=msg;gtRender();setTimeout(()=>{delete _tasks[id];gtRender()},6000)}
+function gtRender(){const bar=document.getElementById('gtBar');const el=document.getElementById('gtTasks');const keys=Object.keys(_tasks);if(!keys.length){bar.classList.remove('vis');return}bar.classList.add('vis');el.innerHTML=keys.map(k=>{const t=_tasks[k];const icon=t.status==='running'?'<span class="gtb-spin"></span>':t.status==='done'?'<span class="gtb-done">&#10003;</span>':'<span class="gtb-err">&#10007;</span>';return`<div class="gtb-task" onclick="swTo('${t.tab}')" title="${esc(t.statusText||t.label)}">${icon}<span class="gtb-label">${esc(t.label)}</span><span class="gtb-pct">${t.status==='running'?Math.round(t.pct)+'%':t.status==='done'?'Done':'Failed'}</span></div>`}).join('')}
+function swTo(tab){const tabMap={chat:0,upload:1,calendar:2,import:3,migrate:4,admin:5};const idx=tabMap[tab];if(idx!==undefined){const navItems=document.querySelectorAll('.sb-nav-item');if(navItems[idx])sw(tab,navItems[idx])}}
+
+/* Auto-refresh bank stats every 30s */
+setInterval(refreshBankStats,30000);
 </script>
 </body>
 </html>
