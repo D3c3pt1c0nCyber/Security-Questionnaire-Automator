@@ -838,7 +838,76 @@ html.light .admin-status-row{border-bottom-color:#f0f0f0}
 </div>
 </div>
 <div class="gtb" id="gtBar"><div class="gtb-tasks" id="gtTasks"></div></div>
+<div id="loginOverlay" style="display:none;position:fixed;inset:0;z-index:9999;background:var(--bg,#1a1a2e);display:none;align-items:center;justify-content:center">
+<div style="background:var(--sf,#16213e);padding:2.5rem;border-radius:12px;max-width:360px;width:90%;text-align:center">
+<h2 style="margin:0 0 0.5rem;color:var(--tx,#e0e0e0)">Security Questionnaire Automator</h2>
+<p style="margin:0 0 1.5rem;color:var(--t2,#8888aa);font-size:0.9rem">Enter password to continue</p>
+<input type="password" id="loginPassword" placeholder="Password" style="width:100%;padding:0.7rem;border:1px solid var(--br,#2a2a4a);border-radius:8px;background:var(--bg,#1a1a2e);color:var(--tx,#e0e0e0);font-size:1rem;margin-bottom:1rem;box-sizing:border-box" onkeydown="if(event.key==='Enter')doLogin()">
+<button onclick="doLogin()" style="width:100%;padding:0.7rem;border:none;border-radius:8px;background:var(--ac,#6c63ff);color:white;font-size:1rem;cursor:pointer;font-weight:600">Login</button>
+<p id="loginError" style="margin:0.75rem 0 0;color:#ff6b6b;font-size:0.85rem;display:none"></p>
+</div>
+</div>
 <script>
+// Authentication gate
+let _sessionToken = localStorage.getItem('sq_session_token') || null;
+
+function authHeaders(headers = {}) {
+  if (_sessionToken) headers['X-Session-Token'] = _sessionToken;
+  return headers;
+}
+
+// Wrap fetch to auto-inject session token
+const _origFetch = window.fetch;
+window.fetch = function(url, opts = {}) {
+  if (typeof url === 'string' && url.startsWith('/api/') && !url.includes('/auth-status') && !url.includes('/login')) {
+    opts.headers = opts.headers || {};
+    if (_sessionToken) opts.headers['X-Session-Token'] = _sessionToken;
+  }
+  return _origFetch.call(this, url, opts);
+};
+
+async function doLogin() {
+  const pw = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+  errEl.style.display = 'none';
+  try {
+    const r = await _origFetch('/api/login', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
+    const d = await r.json();
+    if (d.success) {
+      _sessionToken = d.token;
+      if (d.token) localStorage.setItem('sq_session_token', d.token);
+      document.getElementById('loginOverlay').style.display = 'none';
+    } else {
+      errEl.textContent = d.error || 'Login failed';
+      errEl.style.display = 'block';
+    }
+  } catch(e) {
+    errEl.textContent = 'Connection error';
+    errEl.style.display = 'block';
+  }
+}
+
+// Check if auth is required on load
+(async () => {
+  try {
+    const r = await _origFetch('/api/auth-status');
+    const d = await r.json();
+    if (d.required) {
+      // Test if current token is valid
+      if (_sessionToken) {
+        const t = await _origFetch('/api/products', {headers:{'X-Session-Token':_sessionToken}});
+        if (t.status === 401) {
+          localStorage.removeItem('sq_session_token');
+          _sessionToken = null;
+          document.getElementById('loginOverlay').style.display = 'flex';
+        }
+      } else {
+        document.getElementById('loginOverlay').style.display = 'flex';
+      }
+    }
+  } catch(e) { /* no auth check possible, continue */ }
+})();
+
 let upFile=null,outFN='',allRes=[],chHist=[],chAtt=[],isStr=false,convs=JSON.parse(localStorage.getItem('sq_convs')||'[]'),curCID=null;
 const MN={'claude-opus-4-20250514':'Claude Opus 4','claude-sonnet-4-20250514':'Claude Sonnet 4','claude-haiku-4-5-20251001':'Claude Haiku 4.5'};
 const sk=localStorage.getItem('anthropic_api_key');if(sk){const apiInp=document.getElementById('apiKey');if(apiInp)apiInp.placeholder='API key saved — only enter to change'}

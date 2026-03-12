@@ -5,6 +5,8 @@ const XLSX = require('xlsx');
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const crypto = require('crypto');
+const rateLimit = require('express-rate-limit');
 
 const app = express();
 const PORT = process.env.PORT || 3456;
@@ -65,11 +67,74 @@ function safeName(name) {
   return cleaned;
 }
 
+// Security: sanitize strings for JQL queries (escape special characters)
+function sanitizeJql(str) {
+  return (str || '').replace(/[\\"\[\]{}()+\-&|!^~*?:]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
 // Multer for file uploads
 const upload = multer({
   dest: UPLOAD_DIR,
   limits: { fileSize: 50 * 1024 * 1024 } // 50MB
 });
+
+// Rate limiters
+const apiLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 60,                  // 60 requests per minute for general API
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later' }
+});
+
+const aiLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 10,                  // 10 AI requests per minute (chat, process, migrate)
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many AI requests, please slow down' }
+});
+
+const uploadLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000,
+  max: 20,                  // 20 uploads per minute
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many uploads, please try again later' }
+});
+
+// Optional basic authentication (set APP_PASSWORD in .env to enable)
+const APP_PASSWORD = process.env.APP_PASSWORD || '';
+const activeSessions = new Map();
+
+function generateSessionToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+function requireAuth(req, res, next) {
+  // If no password is set, skip auth (local development)
+  if (!APP_PASSWORD) return next();
+
+  // Check session token in header
+  const token = req.headers['x-session-token'];
+  if (token && activeSessions.has(token)) {
+    const session = activeSessions.get(token);
+    if (Date.now() - session.created < 24 * 60 * 60 * 1000) { // 24h expiry
+      return next();
+    }
+    activeSessions.delete(token);
+  }
+
+  return res.status(401).json({ error: 'Authentication required' });
+}
+
+// Clean up expired sessions every hour
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, session] of activeSessions) {
+    if (now - session.created > 24 * 60 * 60 * 1000) activeSessions.delete(token);
+  }
+}, 60 * 60 * 1000);
 
 // Allow inline scripts/styles (single-file app)
 app.use((req, res, next) => {
@@ -78,6 +143,26 @@ app.use((req, res, next) => {
 });
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json({ limit: '50mb' }));
+
+// Login endpoint (only active when APP_PASSWORD is set)
+app.post('/api/login', apiLimiter, (req, res) => {
+  if (!APP_PASSWORD) return res.json({ success: true, token: null, message: 'No password required' });
+  const { password } = req.body;
+  if (!password || password !== APP_PASSWORD) {
+    return res.status(401).json({ error: 'Invalid password' });
+  }
+  const token = generateSessionToken();
+  activeSessions.set(token, { created: Date.now() });
+  res.json({ success: true, token });
+});
+
+// Check if auth is required
+app.get('/api/auth-status', (req, res) => {
+  res.json({ required: !!APP_PASSWORD });
+});
+
+// Apply rate limiting and auth to all /api routes (except login/auth-status above)
+app.use('/api', apiLimiter, requireAuth);
 
 // --- API Routes ---
 
@@ -508,7 +593,7 @@ async function parseUploadedFile(filePath, originalName) {
 }
 
 // Upload and parse file (any supported format)
-app.post('/api/upload', upload.single('file'), async (req, res) => {
+app.post('/api/upload', uploadLimiter, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
   try {
@@ -525,7 +610,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 });
 
 // Upload multiple files for chat context
-app.post('/api/upload-multi', upload.array('files', 10), async (req, res) => {
+app.post('/api/upload-multi', uploadLimiter, upload.array('files', 10), async (req, res) => {
   if (!req.files || req.files.length === 0) {
     return res.status(400).json({ error: 'No files uploaded' });
   }
@@ -551,7 +636,7 @@ app.post('/api/upload-multi', upload.array('files', 10), async (req, res) => {
 });
 
 // --- Chat endpoint ---
-app.post('/api/chat', async (req, res) => {
+app.post('/api/chat', aiLimiter, async (req, res) => {
   const { messages, apiKey, model, product, attachedFiles, searchConfluence: doConfluence = true, searchJira: doJira = true } = req.body;
 
   if (!apiKey) return res.status(400).json({ error: 'Anthropic API key required' });
@@ -602,7 +687,7 @@ app.post('/api/chat', async (req, res) => {
 
     const [confluenceResults, jiraResults] = await Promise.all([
       doConfluence ? searchConfluence(latestMsg, 5) : Promise.resolve([]),
-      doJira ? searchJira(`project = ${JIRA_PROJECT} AND text ~ "${latestMsg.replace(/"/g, '\\"').substring(0, 100)}" ORDER BY updated DESC`, 5)
+      doJira ? searchJira(`project = ${JIRA_PROJECT} AND text ~ "${sanitizeJql(latestMsg).substring(0, 100)}" ORDER BY updated DESC`, 5)
         .catch(() => searchJira(`project = ${JIRA_PROJECT} ORDER BY updated DESC`, 5)) : Promise.resolve([])
     ]);
 
@@ -818,7 +903,7 @@ ${fileContext}`;
 });
 
 // Process questionnaire with Claude API (existing endpoint)
-app.post('/api/process', async (req, res) => {
+app.post('/api/process', aiLimiter, async (req, res) => {
   const { filePath: rawFilePath, sheetName, questionColumn, idColumn, product, apiKey } = req.body;
 
   if (!apiKey) return res.status(400).json({ error: 'Anthropic API key required' });
@@ -1138,7 +1223,9 @@ app.get('/api/jira/search', async (req, res) => {
 // --- Jira single ticket detail ---
 app.get('/api/jira/ticket/:key', async (req, res) => {
   try {
-    const jql = encodeURIComponent(`key = ${req.params.key}`);
+    const safeKey = sanitizeJql(req.params.key);
+    if (!/^[A-Z]+-\d+$/i.test(safeKey)) return res.status(400).json({ error: 'Invalid ticket key' });
+    const jql = encodeURIComponent(`key = ${safeKey}`);
     const data = await atlassianRequest(
       `/rest/api/3/search/jql?jql=${jql}&maxResults=1&fields=summary,status,assignee,reporter,priority,duedate,created,updated,description,comment`
     );
@@ -1206,9 +1293,9 @@ app.get('/api/jira/issuetypes', async (req, res) => {
 
 // --- Jira Kanban board endpoint ---
 app.get('/api/jira/board', async (req, res) => {
-  const assignee = req.query.assignee || '';
-  const issueType = req.query.issueType || '';
-  const status = req.query.status || 'all';
+  const assignee = sanitizeJql(req.query.assignee || '');
+  const issueType = sanitizeJql(req.query.issueType || '');
+  const status = sanitizeJql(req.query.status || 'all');
   let jql = `project = ${JIRA_PROJECT}`;
   if (assignee) jql += ` AND assignee = "${assignee}"`;
   if (issueType) jql += ` AND issuetype = "${issueType}"`;
@@ -1267,10 +1354,10 @@ app.get('/api/jira/assignees', async (req, res) => {
 
 // --- Jira tickets list endpoint ---
 app.get('/api/jira/tickets', async (req, res) => {
-  const status = req.query.status || 'all';
-  const assignee = req.query.assignee || '';
-  const issueType = req.query.issueType || '';
-  const limit = parseInt(req.query.limit) || 30;
+  const status = sanitizeJql(req.query.status || 'all');
+  const assignee = sanitizeJql(req.query.assignee || '');
+  const issueType = sanitizeJql(req.query.issueType || '');
+  const limit = Math.min(parseInt(req.query.limit) || 30, 100);
   let jql = `project = ${JIRA_PROJECT}`;
   if (status === 'open') jql += ' AND statusCategory != Done';
   else if (status === 'done') jql += ' AND statusCategory = Done';
@@ -1545,7 +1632,7 @@ app.post('/api/bank/import', (req, res) => {
 });
 
 // --- Framework Migration endpoint ---
-app.post('/api/migrate', upload.fields([{ name: 'sourceFile' }, { name: 'targetFile' }]), async (req, res) => {
+app.post('/api/migrate', aiLimiter, upload.fields([{ name: 'sourceFile' }, { name: 'targetFile' }]), async (req, res) => {
   const apiKey = req.body.apiKey;
   if (!apiKey) return res.status(400).json({ error: 'API key required' });
   if (!req.files?.sourceFile?.[0] || !req.files?.targetFile?.[0]) {
