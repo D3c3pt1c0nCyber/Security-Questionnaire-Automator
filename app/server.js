@@ -14,6 +14,15 @@ const BANK_ROOT = path.resolve(__dirname, '..', 'data', 'answer-bank');
 const OUTPUT_DIR = path.resolve(__dirname, '..', 'data', 'output');
 const UPLOAD_DIR = path.resolve(__dirname, 'uploads');
 
+// Ensure directories exist (needed for cloud deployment)
+for (const dir of [
+  BANK_ROOT, OUTPUT_DIR, UPLOAD_DIR,
+  path.join(BANK_ROOT, 'categories'), path.join(BANK_ROOT, 'policies'),
+  path.join(BANK_ROOT, 'products'), path.join(BANK_ROOT, 'past-questionnaires'),
+  path.join(BANK_ROOT, 'frameworks'), path.join(BANK_ROOT, 'clients'),
+  path.join(BANK_ROOT, 'imports')
+]) { fs.mkdirSync(dir, { recursive: true }); }
+
 // Atlassian Config (from .env)
 let ATLASSIAN_BASE = process.env.ATLASSIAN_BASE || '';
 let ATLASSIAN_EMAIL = process.env.ATLASSIAN_EMAIL || '';
