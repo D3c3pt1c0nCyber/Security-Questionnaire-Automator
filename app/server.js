@@ -48,6 +48,23 @@ function setAtlassianCredentials(base, email, token) {
   ATLASSIAN_AUTH = (email && token) ? Buffer.from(`${email}:${token}`).toString('base64') : '';
 }
 
+// Security: validate that a resolved path stays within an allowed directory
+function assertPathWithin(filePath, allowedDir) {
+  const resolved = path.resolve(filePath);
+  const allowed = path.resolve(allowedDir) + path.sep;
+  if (!resolved.startsWith(allowed) && resolved !== path.resolve(allowedDir)) {
+    throw new Error('Path traversal denied');
+  }
+  return resolved;
+}
+
+// Security: sanitize names used in directory paths (no slashes, dots-only, etc.)
+function safeName(name) {
+  const cleaned = (name || '').trim().replace(/[<>:"/\\|?*]/g, '').replace(/^\.+$/, '');
+  if (!cleaned || cleaned.includes('..')) throw new Error('Invalid name');
+  return cleaned;
+}
+
 // Multer for file uploads
 const upload = multer({
   dest: UPLOAD_DIR,
@@ -197,7 +214,8 @@ app.post('/api/products', (req, res) => {
 
 // Remove a product (directory only, preserves files by renaming)
 app.delete('/api/products/:name', (req, res) => {
-  const name = req.params.name;
+  let name;
+  try { name = safeName(req.params.name); } catch { return res.status(400).json({ success: false, error: 'Invalid product name' }); }
   const prodDir = path.join(BANK_ROOT, 'products', name);
   if (!fs.existsSync(prodDir)) return res.json({ success: false, error: 'Product not found' });
   try {
@@ -227,7 +245,8 @@ app.post('/api/frameworks', (req, res) => {
 
 // Remove a framework
 app.delete('/api/frameworks/:name', (req, res) => {
-  const name = req.params.name;
+  let name;
+  try { name = safeName(req.params.name); } catch { return res.status(400).json({ success: false, error: 'Invalid framework name' }); }
   const fwDir = path.join(BANK_ROOT, 'frameworks', name);
   if (!fs.existsSync(fwDir)) return res.json({ success: false, error: 'Framework not found' });
   try {
@@ -260,7 +279,9 @@ app.post('/api/frameworks/:name/versions', (req, res) => {
 
 // Remove a version from a framework
 app.delete('/api/frameworks/:name/versions/:version', (req, res) => {
-  const { name, version } = req.params;
+  let name, version;
+  try { name = safeName(req.params.name); version = safeName(req.params.version); }
+  catch { return res.status(400).json({ success: false, error: 'Invalid name or version' }); }
   const verDir = path.join(BANK_ROOT, 'frameworks', name, version);
   if (!fs.existsSync(verDir)) return res.json({ success: false, error: 'Version not found' });
   try {
@@ -550,9 +571,12 @@ app.post('/api/chat', async (req, res) => {
       for (const f of attachedFiles) {
         if (f.text) {
           fileContext += `\n--- ${f.fileName} ---\n${f.text.substring(0, 50000)}\n`;
-        } else if (f.sheets) {
+        } else if (f.sheets && f.filePath) {
+          // Security: validate filePath is within uploads directory
+          let safeFilePath;
+          try { safeFilePath = assertPathWithin(f.filePath, UPLOAD_DIR); } catch { continue; }
           for (const sheet of f.sheets) {
-            const workbook = XLSX.readFile(f.filePath);
+            const workbook = XLSX.readFile(safeFilePath);
             const sheetData = workbook.Sheets[sheet.name];
             const rows = XLSX.utils.sheet_to_json(sheetData, { defval: '' });
             fileContext += `\n--- ${f.fileName} [${sheet.name}] (${rows.length} rows) ---\n`;
@@ -795,10 +819,15 @@ ${fileContext}`;
 
 // Process questionnaire with Claude API (existing endpoint)
 app.post('/api/process', async (req, res) => {
-  const { filePath, sheetName, questionColumn, idColumn, product, apiKey } = req.body;
+  const { filePath: rawFilePath, sheetName, questionColumn, idColumn, product, apiKey } = req.body;
 
   if (!apiKey) return res.status(400).json({ error: 'Anthropic API key required' });
-  if (!filePath) return res.status(400).json({ error: 'No file specified' });
+  if (!rawFilePath) return res.status(400).json({ error: 'No file specified' });
+
+  // Security: ensure filePath is within the uploads directory
+  let filePath;
+  try { filePath = assertPathWithin(rawFilePath, UPLOAD_DIR); }
+  catch { return res.status(403).json({ error: 'Invalid file path' }); }
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -1370,10 +1399,16 @@ app.get('/api/bank/frameworks', (req, res) => {
 
 // Import original file directly to answer bank (no conversion)
 app.post('/api/bank/import-file', (req, res) => {
-  const { type, category, product, framework, version, filePath, fileName } = req.body;
-  if (!filePath || !fileName) {
+  const { type, category, product, framework, version, filePath: rawFilePath, fileName } = req.body;
+  if (!rawFilePath || !fileName) {
     return res.status(400).json({ error: 'No file to import' });
   }
+
+  // Security: ensure filePath is within the uploads directory
+  let filePath;
+  try { filePath = assertPathWithin(rawFilePath, UPLOAD_DIR); }
+  catch { return res.status(403).json({ error: 'Invalid file path' }); }
+
   try {
     const today = new Date().toISOString().slice(0, 10);
     const ext = path.extname(fileName).toLowerCase();
