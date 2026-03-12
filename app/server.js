@@ -162,7 +162,18 @@ app.get('/api/auth-status', (req, res) => {
   res.json({ required: !!APP_PASSWORD });
 });
 
-// Apply rate limiting and auth to all /api routes (except login/auth-status above)
+// Download endpoint (before auth — browser navigates directly, can't send headers)
+app.get('/api/download/:filename', (req, res) => {
+  const safeFN = path.basename(req.params.filename);
+  const filePath = path.join(OUTPUT_DIR, safeFN);
+  if (fs.existsSync(filePath)) {
+    res.download(filePath);
+  } else {
+    res.status(404).json({ error: 'File not found' });
+  }
+});
+
+// Apply rate limiting and auth to all /api routes (except login/auth-status/download above)
 app.use('/api', apiLimiter, requireAuth);
 
 // --- API Routes ---
@@ -1038,16 +1049,6 @@ app.post('/api/process', aiLimiter, async (req, res) => {
   res.end();
 });
 
-// Download completed file
-app.get('/api/download/:filename', (req, res) => {
-  const safeName = path.basename(req.params.filename);
-  const filePath = path.join(OUTPUT_DIR, safeName);
-  if (fs.existsSync(filePath)) {
-    res.download(filePath);
-  } else {
-    res.status(404).json({ error: 'File not found' });
-  }
-});
 
 // --- Save processed questionnaire results to answer bank ---
 app.post('/api/process/save-to-bank', (req, res) => {
