@@ -1591,8 +1591,9 @@ app.get('/api/jira/search', async (req, res) => {
 // --- Jira single ticket detail ---
 app.get('/api/jira/ticket/:key', async (req, res) => {
   try {
-    const safeKey = sanitizeJql(req.params.key);
-    if (!/^[A-Z]+-\d+$/i.test(safeKey)) return res.status(400).json({ error: 'Invalid ticket key' });
+    const rawKey = (req.params.key || '').trim();
+    if (!/^[A-Z]+-\d+$/i.test(rawKey)) return res.status(400).json({ error: 'Invalid ticket key' });
+    const safeKey = rawKey.toUpperCase();
     const jql = encodeURIComponent(`key = ${safeKey}`);
     const data = await atlassianRequest(
       `/rest/api/3/search/jql?jql=${jql}&maxResults=1&fields=summary,status,assignee,reporter,priority,duedate,created,updated,description,comment`
