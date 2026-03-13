@@ -11,9 +11,9 @@ const AdmZip = require('adm-zip');
 const pdfParse = require('pdf-parse');
 
 // Model constants
-const MODEL_OPUS = MODEL_OPUS;
-const MODEL_SONNET = MODEL_SONNET;
-const MODEL_HAIKU = MODEL_HAIKU;
+const MODEL_OPUS = 'claude-opus-4-20250514';
+const MODEL_SONNET = 'claude-sonnet-4-20250514';
+const MODEL_HAIKU = 'claude-haiku-4-5-20251001';
 
 const app = express();
 app.set('trust proxy', 1); // Trust first proxy (Render, Heroku, etc.)
@@ -45,6 +45,32 @@ let JIRA_PROJECT = process.env.JIRA_PROJECT || 'ISC';
 
 // In-memory session store for migration target files (for format-preserving export)
 const migrationSessions = new Map();
+
+// Background job tracking
+const jobs = new Map();
+let _jobSeq = 0;
+const JOB_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+
+function createJob(type, meta = {}) {
+  const id = `${Date.now()}_${++_jobSeq}`;
+  const job = { id, type, status: 'running', progress: 0, step: 'Starting...', createdAt: Date.now(), logs: [], result: null, error: null, ...meta };
+  jobs.set(id, job);
+  if (jobs.size > 50) { const k = jobs.keys().next().value; jobs.delete(k); }
+  return job;
+}
+function jobUpdate(job, fields) {
+  Object.assign(job, fields);
+  if (fields.step) job.logs.push({ t: new Date().toLocaleTimeString(), msg: fields.step });
+}
+// Auto-expire stale running jobs every minute
+setInterval(() => {
+  const now = Date.now();
+  for (const job of jobs.values()) {
+    if (job.status === 'running' && (now - job.createdAt) > JOB_TIMEOUT_MS) {
+      jobUpdate(job, { status: 'error', error: 'Job timed out (exceeded 30 minutes)' });
+    }
+  }
+}, 60 * 1000);
 
 // Function to update Atlassian credentials
 function setAtlassianCredentials(base, email, token) {
@@ -83,7 +109,7 @@ function stripTags(text) {
 
 // Relative path from BANK_ROOT with forward slashes (used in API responses)
 function bankRelPath(fullPath) {
-  return bankRelPath(fullPath);
+  return path.relative(BANK_ROOT, fullPath).replace(/\\/g, '/');
 }
 
 // Build answer lookup maps from an array of answer objects
@@ -363,7 +389,7 @@ const upload = multer({
 // Rate limiters
 const apiLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
-  max: 60,                  // 60 requests per minute for general API
+  max: 600,                 // 600 requests per minute (local app — polling + normal use)
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests, please try again later' }
@@ -1196,27 +1222,37 @@ ${fileContext}`;
 });
 
 // Process questionnaire with Claude API (existing endpoint)
-app.post('/api/process', aiLimiter, async (req, res) => {
-  const { filePath: rawFilePath, fileType, sheetName, questionColumn, idColumn, product, apiKey } = req.body;
+// Job status endpoints
+app.get('/api/jobs', (req, res) => {
+  res.json([...jobs.values()].map(j => ({
+    id: j.id, type: j.type, status: j.status, progress: j.progress,
+    step: j.step, createdAt: j.createdAt, fileName: j.fileName || ''
+  })));
+});
+app.get('/api/jobs/:id', (req, res) => {
+  const job = jobs.get(req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  res.json(job);
+});
+app.delete('/api/jobs/:id', (req, res) => {
+  const job = jobs.get(req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  jobUpdate(job, { status: 'cancelled', error: 'Cancelled by user' });
+  res.json({ success: true });
+});
+app.delete('/api/jobs', (req, res) => {
+  // Clear all non-running jobs (finished/errored/cancelled)
+  for (const [id, job] of jobs) {
+    if (job.status !== 'running') jobs.delete(id);
+  }
+  res.json({ cleared: true });
+});
 
-  if (!apiKey) return res.status(400).json({ error: 'Anthropic API key required' });
-  if (!rawFilePath) return res.status(400).json({ error: 'No file specified' });
-
-  let filePath;
-  try { filePath = assertPathWithin(rawFilePath, UPLOAD_DIR); }
-  catch { return res.status(403).json({ error: 'Invalid file path' }); }
-
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-
-  const sendEvent = (type, data) => { res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`); };
-
+async function runBatchJob(job, { filePath, fileType, sheetName, questionColumn, idColumn, product, apiKey }) {
   try {
     const ext = (fileType || '.xlsx').toLowerCase();
-    sendEvent('progress', { step: 'Reading questionnaire...', percent: 5 });
+    jobUpdate(job, { step: 'Reading questionnaire...', progress: 5 });
 
-    // --- Extract questions based on file type ---
     let questions = [];
     let workbook = null;
 
@@ -1251,29 +1287,24 @@ app.post('/api/process', aiLimiter, async (req, res) => {
     } else if (ext === '.docx') {
       questions = extractQuestionsFromDocxFile(filePath);
       if (questions.length === 0) {
-        // Fallback: extract text and use Claude to find questions
-        sendEvent('progress', { step: 'Extracting text from document...', percent: 8 });
-  
+        jobUpdate(job, { step: 'Extracting text from document...', progress: 8 });
         const zip = new AdmZip(filePath);
         const xmlContent = zip.readAsText('word/document.xml');
         const text = stripTags(xmlContent);
-        sendEvent('progress', { step: 'Identifying questions...', percent: 12 });
+        jobUpdate(job, { step: 'Identifying questions...', progress: 12 });
         questions = await extractQuestionsFromText(apiKey, text);
       }
 
     } else if (ext === '.pdf') {
-      sendEvent('progress', { step: 'Extracting text from PDF...', percent: 8 });
-
+      jobUpdate(job, { step: 'Extracting text from PDF...', progress: 8 });
       const buffer = fs.readFileSync(filePath);
       const pdfData = await pdfParse(buffer);
-      sendEvent('progress', { step: 'Identifying questions...', percent: 12 });
+      jobUpdate(job, { step: 'Identifying questions...', progress: 12 });
       questions = await extractQuestionsFromText(apiKey, pdfData.text);
 
     } else {
-      // txt, md, json, html, xml, pptx, rtf, etc. — extract text then use Claude
       let text = '';
       if (ext === '.pptx') {
-  
         const zip = new AdmZip(filePath);
         const entries = zip.getEntries().filter(e => /^ppt\/slides\/slide\d+\.xml$/i.test(e.entryName));
         text = entries.map(e => e.getData().toString('utf-8').replace(/<[^>]+>/g, ' ')).join(' ');
@@ -1284,18 +1315,18 @@ app.post('/api/process', aiLimiter, async (req, res) => {
         text = fs.readFileSync(filePath, 'utf-8');
         if (ext === '.html' || ext === '.htm' || ext === '.xml') text = text.replace(/<[^>]+>/g, ' ');
       }
-      sendEvent('progress', { step: 'Identifying questions...', percent: 12 });
+      jobUpdate(job, { step: 'Identifying questions...', progress: 12 });
       questions = await extractQuestionsFromText(apiKey, text);
     }
 
     if (questions.length === 0) {
-      sendEvent('error', { message: 'No questions found in the file. Check the format or column selection.' });
-      res.end(); return;
+      jobUpdate(job, { status: 'error', error: 'No questions found in the file. Check the format or column selection.' });
+      return;
     }
 
-    sendEvent('progress', { step: `Found ${questions.length} questions — loading answer bank...`, percent: 15 });
+    jobUpdate(job, { step: `Found ${questions.length} questions — loading answer bank...`, progress: 15 });
     const knowledgeBase = await loadKnowledgeBase(product);
-    sendEvent('progress', { step: `Found ${questions.length} questions`, percent: 20 });
+    jobUpdate(job, { step: `Found ${questions.length} questions`, progress: 20 });
 
     const batchSize = 10;
     const allAnswers = [];
@@ -1305,19 +1336,17 @@ app.post('/api/process', aiLimiter, async (req, res) => {
       const batchNum = Math.floor(i / batchSize) + 1;
       const batch = questions.slice(i, i + batchSize);
       const percent = 20 + Math.round((batchNum / totalBatches) * 65);
-      sendEvent('progress', {
+      jobUpdate(job, {
         step: `Processing batch ${batchNum}/${totalBatches} (questions ${i + 1}-${Math.min(i + batchSize, questions.length)})...`,
-        percent
+        progress: percent
       });
       const answers = await callClaudeAPI(apiKey, batch, knowledgeBase, product);
       allAnswers.push(...answers);
-      sendEvent('batch_complete', { batchNum, totalBatches, answers });
     }
 
-    // Second pass: search Confluence for low-confidence answers
     const lowConf = allAnswers.filter(a => a.confidence === 'low' || !a.answer);
     if (lowConf.length > 0) {
-      sendEvent('progress', { step: `Searching Confluence for ${lowConf.length} uncertain answers...`, percent: 87 });
+      jobUpdate(job, { step: `Searching Confluence for ${lowConf.length} uncertain answers...`, progress: 87 });
       for (let i = 0; i < lowConf.length; i += 5) {
         const batch = lowConf.slice(i, i + 5);
         const confResults = [];
@@ -1347,54 +1376,52 @@ app.post('/api/process', aiLimiter, async (req, res) => {
       }
     }
 
-    sendEvent('progress', { step: 'Writing output file...', percent: 90 });
+    jobUpdate(job, { step: 'Writing output file...', progress: 90 });
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    // Determine output extension: preserve original for writable formats, fallback to xlsx
     const writableExts = ['.xlsx', '.xls', '.csv', '.docx'];
     const outputExt = writableExts.includes(ext) ? (ext === '.xls' ? '.xlsx' : ext) : '.xlsx';
     const outputName = `completed-questionnaire-${timestamp}${outputExt}`;
     const outputPath = path.join(OUTPUT_DIR, outputName);
-
-    const originalInfo = {
-      originalFilePath: filePath,
-      sheetName: workbook ? (sheetName || workbook.SheetNames[0]) : null,
-      questionColumn,
-      idColumn,
-      questions
-    };
+    const originalInfo = { originalFilePath: filePath, sheetName: workbook ? (sheetName || workbook.SheetNames[0]) : null, questionColumn, idColumn, questions };
     const actualOutputPath = writeOutputFile(allAnswers, outputPath, originalInfo, ext);
     const actualOutputName = path.basename(actualOutputPath);
 
-    // Collect flags for data quality summary
     const flagged = allAnswers.filter(a => a.flags && a.flags.length > 0);
     const conflicts = allAnswers.filter(a => a.flags?.includes('conflict'));
     const noData = allAnswers.filter(a => a.flags?.includes('no-product-data'));
     const needsReview = allAnswers.filter(a => a.flags?.includes('needs-review') || (a.answer || '').includes('[NEEDS REVIEW]'));
     const crossProduct = allAnswers.filter(a => a.flags?.includes('cross-product'));
 
-    if (flagged.length > 0) {
-      sendEvent('progress', { step: `Data quality: ${conflicts.length} conflicts, ${noData.length} missing product data, ${needsReview.length} need review`, percent: 95 });
-    }
-
-    sendEvent('complete', {
-      outputFile: actualOutputName,
-      totalQuestions: questions.length,
-      highConfidence: allAnswers.filter(a => a.confidence === 'high').length,
-      mediumConfidence: allAnswers.filter(a => a.confidence === 'medium').length,
-      lowConfidence: allAnswers.filter(a => a.confidence === 'low').length,
-      flagged: flagged.length,
-      conflicts: conflicts.length,
-      noProductData: noData.length,
-      needsReview: needsReview.length,
-      crossProduct: crossProduct.length,
-      answers: allAnswers
+    jobUpdate(job, {
+      status: 'complete',
+      progress: 100,
+      step: `Done — ${questions.length} questions answered`,
+      result: {
+        outputFile: actualOutputName,
+        totalQuestions: questions.length,
+        highConfidence: allAnswers.filter(a => a.confidence === 'high').length,
+        mediumConfidence: allAnswers.filter(a => a.confidence === 'medium').length,
+        lowConfidence: allAnswers.filter(a => a.confidence === 'low').length,
+        flagged: flagged.length, conflicts: conflicts.length,
+        noProductData: noData.length, needsReview: needsReview.length,
+        crossProduct: crossProduct.length, answers: allAnswers
+      }
     });
-
   } catch (err) {
-    sendEvent('error', { message: err.message });
+    jobUpdate(job, { status: 'error', error: err.message });
   }
+}
 
-  res.end();
+app.post('/api/process', aiLimiter, (req, res) => {
+  const { filePath: rawFilePath, fileType, sheetName, questionColumn, idColumn, product, apiKey } = req.body;
+  if (!apiKey) return res.status(400).json({ error: 'Anthropic API key required' });
+  if (!rawFilePath) return res.status(400).json({ error: 'No file specified' });
+  let filePath;
+  try { filePath = assertPathWithin(rawFilePath, UPLOAD_DIR); }
+  catch { return res.status(403).json({ error: 'Invalid file path' }); }
+  const job = createJob('batch', { fileName: path.basename(filePath), product: product || '' });
+  res.json({ jobId: job.id });
+  runBatchJob(job, { filePath, fileType, sheetName, questionColumn, idColumn, product, apiKey });
 });
 
 
@@ -1459,6 +1486,7 @@ app.post('/api/process/save-to-bank', (req, res) => {
       fs.writeFileSync(changelogPath, existing + changeEntry);
     }
 
+    _kbCache.clear(); // invalidate KB cache so next request picks up the new entries
     res.json({
       success: true,
       path: bankRelPath(targetPath),
@@ -1969,33 +1997,16 @@ app.post('/api/bank/import', (req, res) => {
 });
 
 // --- Framework Migration endpoint ---
-app.post('/api/migrate', aiLimiter, upload.fields([{ name: 'sourceFile' }, { name: 'targetFile' }]), async (req, res) => {
-  const apiKey = req.body.apiKey;
-  if (!apiKey) return res.status(400).json({ error: 'API key required' });
-  if (!req.files?.sourceFile?.[0] || !req.files?.targetFile?.[0]) {
-    return res.status(400).json({ error: 'Both source and target files required' });
-  }
-
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-
-  const sendEvent = (type, data) => {
-    res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`);
-  };
-
+async function runMigJob(job, { apiKey, sourceFilePath, targetFilePath, targetFileName }) {
   try {
-    // Parse source file
-    sendEvent('progress', { step: 'Parsing source file...', percent: 5 });
-    const sourceQuestions = extractQuestionsFromExcel(req.files.sourceFile[0].path);
+    jobUpdate(job, { step: 'Parsing source file...', progress: 5 });
+    const sourceQuestions = extractQuestionsFromExcel(sourceFilePath);
 
-    // Parse target file
-    sendEvent('progress', { step: 'Parsing target file...', percent: 15 });
-    const targetQuestions = extractQuestionsFromExcel(req.files.targetFile[0].path);
+    jobUpdate(job, { step: 'Parsing target file...', progress: 15 });
+    const targetQuestions = extractQuestionsFromExcel(targetFilePath);
 
-    sendEvent('progress', { step: `Found ${sourceQuestions.length} source questions, ${targetQuestions.length} target questions`, percent: 20 });
+    jobUpdate(job, { step: `Found ${sourceQuestions.length} source questions, ${targetQuestions.length} target questions`, progress: 20 });
 
-    // Batch match using Claude API
     const batchSize = 15;
     const allMappings = [];
     const totalBatches = Math.ceil(targetQuestions.length / batchSize);
@@ -2004,33 +2015,23 @@ app.post('/api/migrate', aiLimiter, upload.fields([{ name: 'sourceFile' }, { nam
       const batchNum = Math.floor(i / batchSize) + 1;
       const batch = targetQuestions.slice(i, i + batchSize);
       const percent = 20 + Math.round((batchNum / totalBatches) * 70);
-
-      sendEvent('progress', {
+      jobUpdate(job, {
         step: `Matching batch ${batchNum}/${totalBatches} (questions ${i + 1}-${Math.min(i + batchSize, targetQuestions.length)})...`,
-        percent
+        progress: percent
       });
-
       const mappings = await matchQuestions(apiKey, sourceQuestions, batch);
       allMappings.push(...mappings);
-
-      sendEvent('batch', { batchNum, totalBatches, count: mappings.length });
     }
 
-    // Second pass: fill unanswered questions using Confluence + answer bank
     const unanswered = allMappings.filter(m => !m.migratedAnswer || m.matchConfidence === 'none');
     if (unanswered.length > 0) {
-      sendEvent('progress', { step: `Searching Confluence & answer bank for ${unanswered.length} unanswered questions...`, percent: 92 });
-
+      jobUpdate(job, { step: `Searching Confluence & answer bank for ${unanswered.length} unanswered questions...`, progress: 92 });
       const knowledgeBase = await loadKnowledgeBase('');
-
-      // Search Confluence for unanswered questions in batches
       const confBatchSize = 5;
       for (let i = 0; i < unanswered.length; i += confBatchSize) {
         const batch = unanswered.slice(i, i + confBatchSize);
         const percent = 92 + Math.round(((i + confBatchSize) / unanswered.length) * 6);
-        sendEvent('progress', { step: `Searching sources for questions ${i + 1}-${Math.min(i + confBatchSize, unanswered.length)} of ${unanswered.length}...`, percent });
-
-        // Search Confluence for each question
+        jobUpdate(job, { step: `Searching sources for questions ${i + 1}-${Math.min(i + confBatchSize, unanswered.length)} of ${unanswered.length}...`, progress: percent });
         const confResults = [];
         for (const m of batch) {
           const keywords = (m.targetQuestion || '').replace(/[^a-zA-Z0-9\s]/g, '').split(/\s+/).filter(w => w.length > 3).slice(0, 5).join(' ');
@@ -2041,8 +2042,6 @@ app.post('/api/migrate', aiLimiter, upload.fields([{ name: 'sourceFile' }, { nam
             }
           }
         }
-
-        // Use Claude to draft answers from Confluence + answer bank
         if (confResults.length > 0 || knowledgeBase.length > 100) {
           try {
             const supplementAnswers = await fillFromSources(apiKey, batch, confResults, knowledgeBase, '');
@@ -2055,41 +2054,49 @@ app.post('/api/migrate', aiLimiter, upload.fields([{ name: 'sourceFile' }, { nam
                 mapping.notes = (mapping.notes || '') + ' [Supplemented from ' + (sa.source || 'Confluence/KB') + ']';
               }
             }
-          } catch (e) {
-            console.error('Supplement pass error:', e.message);
-          }
+          } catch (e) { console.error('Supplement pass error:', e.message); }
         }
       }
     }
 
-    const finalUnmapped = allMappings.filter(m => !m.migratedAnswer || m.matchConfidence === 'none').length;
-    sendEvent('progress', { step: `Migration complete! ${allMappings.length - finalUnmapped} answered, ${finalUnmapped} need manual review`, percent: 100 });
-
-    // Save target file path for format-preserving export
+    // Register migration session for format-preserving export
     const sessionId = Date.now().toString() + Math.random().toString(36).slice(2);
-    migrationSessions.set(sessionId, {
-      targetFilePath: req.files.targetFile[0].path,
-      targetFileName: req.files.targetFile[0].originalname,
-      created: Date.now()
-    });
-    // Clean up sessions older than 2 hours
+    migrationSessions.set(sessionId, { targetFilePath, targetFileName, created: Date.now() });
     for (const [id, sess] of migrationSessions) {
       if (Date.now() - sess.created > 7200000) migrationSessions.delete(id);
     }
 
-    sendEvent('complete', {
-      sourceCount: sourceQuestions.length,
-      targetCount: targetQuestions.length,
-      mappedCount: allMappings.filter(m => m.matchConfidence !== 'none').length,
-      unmappedCount: allMappings.filter(m => m.matchConfidence === 'none').length,
-      mappings: allMappings,
-      sessionId
+    const finalUnmapped = allMappings.filter(m => !m.migratedAnswer || m.matchConfidence === 'none').length;
+    jobUpdate(job, {
+      status: 'complete',
+      progress: 100,
+      step: `Done — ${allMappings.length - finalUnmapped} answered, ${finalUnmapped} need review`,
+      result: {
+        sourceCount: sourceQuestions.length,
+        targetCount: targetQuestions.length,
+        mappedCount: allMappings.filter(m => m.matchConfidence !== 'none').length,
+        unmappedCount: finalUnmapped,
+        mappings: allMappings,
+        sessionId
+      }
     });
-
   } catch (err) {
-    sendEvent('error', { message: err.message });
+    jobUpdate(job, { status: 'error', error: err.message });
   }
-  res.end();
+}
+
+app.post('/api/migrate', aiLimiter, upload.fields([{ name: 'sourceFile' }, { name: 'targetFile' }]), (req, res) => {
+  const apiKey = req.body.apiKey;
+  if (!apiKey) return res.status(400).json({ error: 'API key required' });
+  if (!req.files?.sourceFile?.[0] || !req.files?.targetFile?.[0]) {
+    return res.status(400).json({ error: 'Both source and target files required' });
+  }
+  const sourceFilePath = req.files.sourceFile[0].path;
+  const targetFilePath = req.files.targetFile[0].path;
+  const targetFileName = req.files.targetFile[0].originalname;
+  const job = createJob('migrate', { fileName: targetFileName });
+  res.json({ jobId: job.id });
+  runMigJob(job, { apiKey, sourceFilePath, targetFilePath, targetFileName });
 });
 
 // Export migrated questionnaire (format-preserving: fills answers into the original target file)
@@ -2557,7 +2564,14 @@ async function parsePDFs(files) {
   return files;
 }
 
+// Knowledge base cache (key = product name or '', TTL = 5 min)
+const _kbCache = new Map();
+const KB_CACHE_TTL = 5 * 60 * 1000;
+
 async function loadKnowledgeBase(product) {
+  const cacheKey = product || '';
+  const cached = _kbCache.get(cacheKey);
+  if (cached && (Date.now() - cached.ts) < KB_CACHE_TTL) return cached.data;
   // --- Get all known product names for scoping ---
   let allProductNames = [];
   try {
@@ -2657,7 +2671,7 @@ async function loadKnowledgeBase(product) {
     ].join('\n');
   }
 
-  return [
+  const result = [
     '=== CATEGORY ANSWERS (Organization-wide Q&A — applies to ALL products) ===',
     '(Note: Answers marked [Your answer here] are placeholders — use Confluence or your knowledge to draft real answers)',
     ...categories.map(f => `\n--- ${f.file} ---\n${f.content}`),
@@ -2679,6 +2693,9 @@ async function loadKnowledgeBase(product) {
     '\n=== GLOSSARY ===',
     glossary
   ].join('\n');
+
+  _kbCache.set(cacheKey, { data: result, ts: Date.now() });
+  return result;
 }
 
 function callClaudeAPI(apiKey, questions, knowledgeBase, product) {
@@ -2965,6 +2982,7 @@ app.post('/api/bank/save-answer', (req, res) => {
       fs.appendFileSync(changelogPath, changeEntry);
     }
 
+    _kbCache.clear(); // invalidate KB cache so next request picks up the new answer
     res.json({
       success: true,
       path: bankRelPath(targetPath),
