@@ -18,6 +18,7 @@ const MODEL_HAIKU = 'claude-haiku-4-5-20251001';
 const app = express();
 app.set('trust proxy', 1); // Trust first proxy (Render, Heroku, etc.)
 const PORT = process.env.PORT || 3456;
+const SERVER_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 
 // Config
 const BANK_ROOT = path.resolve(__dirname, '..', 'data', 'answer-bank');
@@ -466,7 +467,7 @@ app.post('/api/login', apiLimiter, (req, res) => {
 
 // Check if auth is required
 app.get('/api/auth-status', (req, res) => {
-  res.json({ required: !!APP_PASSWORD });
+  res.json({ required: !!APP_PASSWORD, hasServerApiKey: !!SERVER_API_KEY });
 });
 
 // Download endpoint (before auth — browser navigates directly, can't send headers)
@@ -554,7 +555,7 @@ app.post('/api/atlassian/project', (req, res) => {
 
 // Test Claude API key
 app.post('/api/test-api-key', (req, res) => {
-  const { apiKey } = req.body;
+  const apiKey = req.body.apiKey || SERVER_API_KEY;
   if (!apiKey) return res.status(400).json({ error: 'API key is required' });
 
   const body = JSON.stringify({ model: MODEL_HAIKU, max_tokens: 1, messages: [{ role: 'user', content: 'hi' }] });
@@ -956,7 +957,8 @@ app.post('/api/upload-multi', uploadLimiter, upload.array('files', 10), async (r
 
 // --- Chat endpoint ---
 app.post('/api/chat', aiLimiter, async (req, res) => {
-  const { messages, apiKey, model, product, attachedFiles, searchConfluence: doConfluence = true, searchJira: doJira = true } = req.body;
+  const { messages, apiKey: clientKey, model, product, attachedFiles, searchConfluence: doConfluence = true, searchJira: doJira = true } = req.body;
+  const apiKey = clientKey || SERVER_API_KEY;
 
   if (!apiKey) return res.status(400).json({ error: 'Anthropic API key required' });
 
@@ -1413,7 +1415,8 @@ async function runBatchJob(job, { filePath, fileType, sheetName, questionColumn,
 }
 
 app.post('/api/process', aiLimiter, (req, res) => {
-  const { filePath: rawFilePath, fileType, sheetName, questionColumn, idColumn, product, apiKey } = req.body;
+  const { filePath: rawFilePath, fileType, sheetName, questionColumn, idColumn, product, apiKey: clientKey } = req.body;
+  const apiKey = clientKey || SERVER_API_KEY;
   if (!apiKey) return res.status(400).json({ error: 'Anthropic API key required' });
   if (!rawFilePath) return res.status(400).json({ error: 'No file specified' });
   let filePath;
@@ -2086,7 +2089,7 @@ async function runMigJob(job, { apiKey, sourceFilePath, targetFilePath, targetFi
 }
 
 app.post('/api/migrate', aiLimiter, upload.fields([{ name: 'sourceFile' }, { name: 'targetFile' }]), (req, res) => {
-  const apiKey = req.body.apiKey;
+  const apiKey = req.body.apiKey || SERVER_API_KEY;
   if (!apiKey) return res.status(400).json({ error: 'API key required' });
   if (!req.files?.sourceFile?.[0] || !req.files?.targetFile?.[0]) {
     return res.status(400).json({ error: 'Both source and target files required' });
