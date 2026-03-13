@@ -58,11 +58,11 @@ Open `http://localhost:3456`
 
 ### First-Time Setup
 
-1. **Admin > Authentication** - Enter your Atlassian URL, email, API token, and Jira project key
-2. **Admin > Authentication** - Enter your Claude API key
-3. **Admin > Products** - Add your products (e.g., SafeLMS, Convergence, TargetSolutions)
-4. **Admin > Frameworks** - Add framework versions (HECVAT 4.1.2, SIG Full, etc.)
-5. **Import** - Upload existing questionnaires and policy documents to build your answer bank
+1. **Admin > Authentication** — Enter your Atlassian URL, email, API token, and Jira project key
+2. **Admin > Authentication** — Enter your Claude API key
+3. **Admin > Products** — Add your products (e.g., SafeLMS, Convergence, TargetSolutions)
+4. **Admin > Frameworks** — Add framework versions (HECVAT 4.1.2, SIG Full, etc.)
+5. **Import** — Upload existing questionnaires and policy documents to build your answer bank
 
 ## Project Structure
 
@@ -100,12 +100,16 @@ Files belonging to other products are **excluded entirely** - SafeLMS answers ne
 
 ## Admin Settings
 
-| Setting | Description |
-|---------|-------------|
-| Search Confluence | Toggle Confluence search for chat queries |
-| Search Jira | Toggle Jira search for chat queries |
-| Confidence Threshold | Answers below this % are flagged for review |
-| Auto-save to Bank | Automatically save processed questionnaires |
+The Admin panel has six tabs:
+
+| Tab | Description |
+|-----|-------------|
+| **Authentication** | Atlassian (Confluence + Jira) credentials and Claude API key |
+| **Answer Quality** | Default model, confidence threshold, citation and search toggles |
+| **Products** | Add/remove products that appear in all dropdowns |
+| **Frameworks** | Add/remove framework versions (HECVAT, SIG, custom) |
+| **Status** | Live connection status for Server, Confluence, Jira, Answer Bank, Claude API |
+| **Answer Bank** | Knowledge base stats (file counts by category) and file browser |
 
 ## Technology Stack
 

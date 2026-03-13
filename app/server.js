@@ -7,6 +7,13 @@ const path = require('path');
 const https = require('https');
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
+const AdmZip = require('adm-zip');
+const pdfParse = require('pdf-parse');
+
+// Model constants
+const MODEL_OPUS = MODEL_OPUS;
+const MODEL_SONNET = MODEL_SONNET;
+const MODEL_HAIKU = MODEL_HAIKU;
 
 const app = express();
 app.set('trust proxy', 1); // Trust first proxy (Render, Heroku, etc.)
@@ -35,10 +42,6 @@ let ATLASSIAN_AUTH = (ATLASSIAN_EMAIL && ATLASSIAN_TOKEN)
   : '';
 let JIRA_PROJECT = process.env.JIRA_PROJECT || 'ISC';
 
-// Ensure dirs exist
-[OUTPUT_DIR, UPLOAD_DIR].forEach(dir => {
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-});
 
 // In-memory session store for migration target files (for format-preserving export)
 const migrationSessions = new Map();
@@ -73,6 +76,35 @@ function sanitizeJql(str) {
   return (str || '').replace(/[\\"\[\]{}()+\-&|!^~*?:]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+// Strip HTML/XML tags and collapse whitespace
+function stripTags(text) {
+  return (text || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// Relative path from BANK_ROOT with forward slashes (used in API responses)
+function bankRelPath(fullPath) {
+  return bankRelPath(fullPath);
+}
+
+// Build answer lookup maps from an array of answer objects
+function buildAnswerLookup(answers) {
+  const byID = {}, byQ = {}, byIdx = {};
+  for (const a of answers) {
+    if (a.id) byID[String(a.id).trim()] = a;
+    if (a.question) byQ[a.question.trim().toLowerCase()] = a;
+    if (a.index != null) byIdx[a.index] = a;
+  }
+  return { byID, byQ, byIdx };
+}
+
+// Match a single answer from the lookup maps
+function matchAnswer(lookup, rowId, rowQ, dataRowIdx) {
+  let match = rowId ? lookup.byID[rowId] : null;
+  if (!match && rowQ) match = lookup.byQ[rowQ.toLowerCase()];
+  if (!match) match = lookup.byIdx[dataRowIdx];
+  return match || null;
+}
+
 // --- DOCX XML helpers ---
 function docxGetCells(rowXml) {
   const cells = [];
@@ -99,7 +131,7 @@ function docxBuildCell(originalCellXml, text) {
 
 // Extract structured questions from DOCX table XML
 function extractQuestionsFromDocxFile(filePath) {
-  const AdmZip = require('adm-zip');
+
   try {
     const zip = new AdmZip(filePath);
     const xml = zip.readAsText('word/document.xml');
@@ -135,7 +167,7 @@ function extractQuestionsFromDocxFile(filePath) {
 }
 
 // Extract questions from raw document text using Claude (for PDF, TXT, etc.)
-function extractQuestionsFromText(apiKey, text, product) {
+function extractQuestionsFromText(apiKey, text) {
   return new Promise((resolve, reject) => {
     const truncated = text.substring(0, 50000);
     const prompt = `You are analyzing a security questionnaire document. Extract all questions/requirements and return them as a JSON array.
@@ -154,7 +186,7 @@ Rules:
 - If no questions found, return []`;
 
     const body = JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
+      model: MODEL_HAIKU,
       max_tokens: 8000,
       messages: [{ role: 'user', content: prompt }]
     });
@@ -220,12 +252,7 @@ function writeOutputCsv(answers, outputPath, originalInfo) {
       ws[XLSX.utils.encode_cell({ r: range.s.r, c: confColIdx })] = { t: 's', v: 'Confidence' };
       ws[XLSX.utils.encode_cell({ r: range.s.r, c: flagsColIdx })] = { t: 's', v: 'Flags' };
 
-      const answerByID = {}, answerByQ = {}, answerByIdx = {};
-      for (const a of answers) {
-        if (a.id) answerByID[String(a.id).trim()] = a;
-        if (a.question) answerByQ[a.question.trim().toLowerCase()] = a;
-        if (a.index != null) answerByIdx[a.index] = a;
-      }
+      const lookup = buildAnswerLookup(answers);
 
       let dataRowIdx = 0;
       for (let r = range.s.r + 1; r <= range.e.r; r++) {
@@ -234,9 +261,7 @@ function writeOutputCsv(answers, outputPath, originalInfo) {
         const rowId = idCell ? String(idCell.v || '').trim() : '';
         const rowQ = qCell ? String(qCell.v || '').trim() : '';
         if (!rowQ && !rowId) { dataRowIdx++; continue; }
-        let match = answerByID[rowId];
-        if (!match && rowQ) match = answerByQ[rowQ.toLowerCase()];
-        if (!match) match = answerByIdx[dataRowIdx];
+        const match = matchAnswer(lookup, rowId, rowQ, dataRowIdx);
         dataRowIdx++;
         if (match) {
           ws[XLSX.utils.encode_cell({ r, c: aiAnsColIdx })] = { t: 's', v: match.answer || '' };
@@ -261,19 +286,14 @@ function writeOutputCsv(answers, outputPath, originalInfo) {
 
 // Write answers back into a DOCX file preserving the original table structure
 function writeOutputDocx(answers, outputPath, originalInfo) {
-  const AdmZip = require('adm-zip');
+
   try {
     if (!originalInfo?.originalFilePath || !fs.existsSync(originalInfo.originalFilePath)) throw new Error('Original file not found');
     fs.copyFileSync(originalInfo.originalFilePath, outputPath);
     const zip = new AdmZip(outputPath);
     let xml = zip.readAsText('word/document.xml');
 
-    const answerByID = {}, answerByQ = {}, answerByIdx = {};
-    for (const a of answers) {
-      if (a.id) answerByID[String(a.id).trim()] = a;
-      if (a.question) answerByQ[a.question.trim().toLowerCase()] = a;
-      if (a.index != null) answerByIdx[a.index] = a;
-    }
+    const lookup = buildAnswerLookup(answers);
 
     let dataRowIdx = 0;
     xml = xml.replace(/<w:tbl\b[\s\S]*?<\/w:tbl>/g, (tableXml) => {
@@ -296,9 +316,7 @@ function writeOutputDocx(answers, outputPath, originalInfo) {
         const qText = qColIdx < cells.length ? docxGetCellText(cells[qColIdx]) : '';
         const idText = idColIdx >= 0 && idColIdx < cells.length ? docxGetCellText(cells[idColIdx]) : '';
         if (!qText && !idText) { dataRowIdx++; continue; }
-        let match = idText ? answerByID[idText] : null;
-        if (!match && qText) match = answerByQ[qText.toLowerCase()];
-        if (!match) match = answerByIdx[dataRowIdx];
+        const match = matchAnswer(lookup, idText, qText, dataRowIdx);
         dataRowIdx++;
         if (match && ansColIdx < cells.length) {
           const newCell = docxBuildCell(cells[ansColIdx], match.answer || '');
@@ -452,7 +470,7 @@ app.post('/api/atlassian/auth', (req, res) => {
   const testAuth = Buffer.from(`${email}:${token}`).toString('base64');
 
   // Test both Confluence and Jira in parallel
-  let confluenceOk = false, jiraOk = false, confMsg = '', jiraMsg = '';
+  let confluenceOk = false, jiraOk = false;
   let done = 0;
 
   function finish() {
@@ -477,9 +495,9 @@ app.post('/api/atlassian/auth', (req, res) => {
     headers: { 'Authorization': `Basic ${testAuth}`, 'Accept': 'application/json' }
   }, (r) => {
     r.on('data', () => {});
-    r.on('end', () => { confluenceOk = r.statusCode === 200; confMsg = r.statusCode === 200 ? 'OK' : `Status ${r.statusCode}`; finish(); });
+    r.on('end', () => { confluenceOk = r.statusCode === 200; finish(); });
   });
-  confReq.on('error', () => { confMsg = 'Connection failed'; finish(); });
+  confReq.on('error', () => { finish(); });
   confReq.end();
 
   // Test Jira
@@ -490,9 +508,9 @@ app.post('/api/atlassian/auth', (req, res) => {
     headers: { 'Authorization': `Basic ${testAuth}`, 'Content-Type': 'application/json' }
   }, (r) => {
     r.on('data', () => {});
-    r.on('end', () => { jiraOk = r.statusCode === 200; jiraMsg = r.statusCode === 200 ? 'OK' : `Status ${r.statusCode}`; finish(); });
+    r.on('end', () => { jiraOk = r.statusCode === 200; finish(); });
   });
-  jiraReq.on('error', () => { jiraMsg = 'Connection failed'; finish(); });
+  jiraReq.on('error', () => { finish(); });
   jiraReq.end();
 });
 
@@ -513,7 +531,7 @@ app.post('/api/test-api-key', (req, res) => {
   const { apiKey } = req.body;
   if (!apiKey) return res.status(400).json({ error: 'API key is required' });
 
-  const body = JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 1, messages: [{ role: 'user', content: 'hi' }] });
+  const body = JSON.stringify({ model: MODEL_HAIKU, max_tokens: 1, messages: [{ role: 'user', content: 'hi' }] });
   const options = {
     hostname: 'api.anthropic.com', path: '/v1/messages', method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'Content-Length': Buffer.byteLength(body) }
@@ -540,7 +558,7 @@ app.post('/api/test-api-key', (req, res) => {
 });
 
 // Get available products
-app.get('/api/products', (req, res) => {
+app.get('/api/products', (_req, res) => {
   const productsDir = path.join(BANK_ROOT, 'products');
   try {
     const entries = fs.readdirSync(productsDir, { withFileTypes: true });
@@ -654,7 +672,7 @@ app.delete('/api/frameworks/:name/versions/:version', (req, res) => {
 });
 
 // Get current Jira configuration status
-app.get('/api/jira/status', (req, res) => {
+app.get('/api/jira/status', (_req, res) => {
   res.json({
     configured: !!(ATLASSIAN_BASE && ATLASSIAN_EMAIL && ATLASSIAN_TOKEN),
     base: ATLASSIAN_BASE ? ATLASSIAN_BASE.split('//')[1] || ATLASSIAN_BASE : 'Not configured',
@@ -663,7 +681,7 @@ app.get('/api/jira/status', (req, res) => {
 });
 
 // Get current Confluence configuration status
-app.get('/api/confluence/status', (req, res) => {
+app.get('/api/confluence/status', (_req, res) => {
   res.json({
     configured: !!(ATLASSIAN_BASE && ATLASSIAN_EMAIL && ATLASSIAN_TOKEN),
     baseUrl: ATLASSIAN_BASE ? `${ATLASSIAN_BASE}/wiki` : 'Not configured',
@@ -752,7 +770,7 @@ app.post('/api/jira/test', (req, res) => {
 });
 
 // Get available frameworks
-app.get('/api/frameworks', (req, res) => {
+app.get('/api/frameworks', (_req, res) => {
   const frameworksDir = path.join(BANK_ROOT, 'frameworks');
   try {
     const entries = fs.readdirSync(frameworksDir, { withFileTypes: true });
@@ -794,7 +812,7 @@ async function parseUploadedFile(filePath, originalName) {
     }
 
     case '.pdf': {
-      const pdfParse = require('pdf-parse');
+
       const buffer = fs.readFileSync(filePath);
       const pdfData = await pdfParse(buffer);
       return {
@@ -807,11 +825,11 @@ async function parseUploadedFile(filePath, originalName) {
 
     case '.docx': {
       // Basic docx parsing — extract text from XML
-      const AdmZip = require('adm-zip');
+
       try {
         const zip = new AdmZip(filePath);
         const content = zip.readAsText('word/document.xml');
-        const text = content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        const text = stripTags(content);
         return { type: 'document', text: text.substring(0, 30000), preview: text.substring(0, 1000) };
       } catch {
         return { type: 'document', text: '', preview: '', error: 'Could not parse .docx file' };
@@ -826,14 +844,14 @@ async function parseUploadedFile(filePath, originalName) {
     }
 
     case '.pptx': {
-      const AdmZip = require('adm-zip');
+
       try {
         const zip = new AdmZip(filePath);
         const entries = zip.getEntries().filter(e => /^ppt\/slides\/slide\d+\.xml$/i.test(e.entryName));
         entries.sort((a, b) => a.entryName.localeCompare(b.entryName, undefined, { numeric: true }));
         const text = entries.map((e, i) => {
           const xml = e.getData().toString('utf-8');
-          const clean = xml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+          const clean = stripTags(xml);
           return `[Slide ${i + 1}] ${clean}`;
         }).join('\n\n');
         return { type: 'document', text: text.substring(0, 30000), preview: text.substring(0, 1000), slideCount: entries.length };
@@ -846,7 +864,7 @@ async function parseUploadedFile(filePath, originalName) {
     case '.htm':
     case '.xml': {
       const raw = fs.readFileSync(filePath, 'utf-8');
-      const text = raw.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      const text = stripTags(raw);
       return { type: 'document', text: text.substring(0, 30000), preview: text.substring(0, 1000) };
     }
 
@@ -1078,7 +1096,7 @@ ${confluenceContext}
 ${jiraContext}
 ${fileContext}`;
 
-    const selectedModel = model || 'claude-opus-4-20250514';
+    const selectedModel = model || MODEL_OPUS;
     const maxTok = selectedModel.includes('haiku') ? 8192 : selectedModel.includes('opus') ? 32000 : 50000;
     const body = JSON.stringify({
       model: selectedModel,
@@ -1235,27 +1253,27 @@ app.post('/api/process', aiLimiter, async (req, res) => {
       if (questions.length === 0) {
         // Fallback: extract text and use Claude to find questions
         sendEvent('progress', { step: 'Extracting text from document...', percent: 8 });
-        const AdmZip = require('adm-zip');
+  
         const zip = new AdmZip(filePath);
         const xmlContent = zip.readAsText('word/document.xml');
-        const text = xmlContent.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        const text = stripTags(xmlContent);
         sendEvent('progress', { step: 'Identifying questions...', percent: 12 });
-        questions = await extractQuestionsFromText(apiKey, text, product);
+        questions = await extractQuestionsFromText(apiKey, text);
       }
 
     } else if (ext === '.pdf') {
       sendEvent('progress', { step: 'Extracting text from PDF...', percent: 8 });
-      const pdfParse = require('pdf-parse');
+
       const buffer = fs.readFileSync(filePath);
       const pdfData = await pdfParse(buffer);
       sendEvent('progress', { step: 'Identifying questions...', percent: 12 });
-      questions = await extractQuestionsFromText(apiKey, pdfData.text, product);
+      questions = await extractQuestionsFromText(apiKey, pdfData.text);
 
     } else {
       // txt, md, json, html, xml, pptx, rtf, etc. — extract text then use Claude
       let text = '';
       if (ext === '.pptx') {
-        const AdmZip = require('adm-zip');
+  
         const zip = new AdmZip(filePath);
         const entries = zip.getEntries().filter(e => /^ppt\/slides\/slide\d+\.xml$/i.test(e.entryName));
         text = entries.map(e => e.getData().toString('utf-8').replace(/<[^>]+>/g, ' ')).join(' ');
@@ -1267,7 +1285,7 @@ app.post('/api/process', aiLimiter, async (req, res) => {
         if (ext === '.html' || ext === '.htm' || ext === '.xml') text = text.replace(/<[^>]+>/g, ' ');
       }
       sendEvent('progress', { step: 'Identifying questions...', percent: 12 });
-      questions = await extractQuestionsFromText(apiKey, text, product);
+      questions = await extractQuestionsFromText(apiKey, text);
     }
 
     if (questions.length === 0) {
@@ -1435,7 +1453,7 @@ app.post('/api/process/save-to-bank', (req, res) => {
 
     // Update changelog
     const changelogPath = path.join(BANK_ROOT, 'changelog.md');
-    const changeEntry = `\n## ${today} - Batch Process Save\n- **Action:** Saved ${answers.length} answered questions\n- **Product:** ${prod}\n- **Framework:** ${framework || 'Custom'}${version ? ' ' + version : ''}\n- **Destination:** ${path.relative(BANK_ROOT, targetPath).replace(/\\/g, '/')}\n- **Source:** ${fileName || 'Batch process'}\n`;
+    const changeEntry = `\n## ${today} - Batch Process Save\n- **Action:** Saved ${answers.length} answered questions\n- **Product:** ${prod}\n- **Framework:** ${framework || 'Custom'}${version ? ' ' + version : ''}\n- **Destination:** ${bankRelPath(targetPath)}\n- **Source:** ${fileName || 'Batch process'}\n`;
     if (fs.existsSync(changelogPath)) {
       const existing = fs.readFileSync(changelogPath, 'utf-8');
       fs.writeFileSync(changelogPath, existing + changeEntry);
@@ -1443,7 +1461,7 @@ app.post('/api/process/save-to-bank', (req, res) => {
 
     res.json({
       success: true,
-      path: path.relative(BANK_ROOT, targetPath).replace(/\\/g, '/'),
+      path: bankRelPath(targetPath),
       entriesSaved: answers.length
     });
   } catch (err) {
@@ -1500,19 +1518,6 @@ async function searchConfluence(query, limit = 5) {
   } catch (err) {
     console.error('Confluence search error:', err.message);
     return [];
-  }
-}
-
-async function getConfluencePage(pageId) {
-  try {
-    const data = await atlassianRequest(`/wiki/rest/api/content/${pageId}?expand=body.storage`);
-    const text = (data.body?.storage?.value || '')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-    return { title: data.title, text: text.substring(0, 10000) };
-  } catch (err) {
-    return { title: 'Error', text: err.message };
   }
 }
 
@@ -1789,7 +1794,7 @@ app.get('/api/jira/calendar', async (req, res) => {
 // --- Answer Bank Import endpoints ---
 
 // List categories
-app.get('/api/bank/categories', (req, res) => {
+app.get('/api/bank/categories', (_req, res) => {
   const catDir = path.join(BANK_ROOT, 'categories');
   try {
     const files = fs.readdirSync(catDir)
@@ -1800,7 +1805,7 @@ app.get('/api/bank/categories', (req, res) => {
 });
 
 // List frameworks with versions
-app.get('/api/bank/frameworks', (req, res) => {
+app.get('/api/bank/frameworks', (_req, res) => {
   const fwDir = path.join(BANK_ROOT, 'frameworks');
   try {
     const frameworks = [];
@@ -1818,7 +1823,7 @@ app.get('/api/bank/frameworks', (req, res) => {
 
 // Import original file directly to answer bank (no conversion)
 app.post('/api/bank/import-file', (req, res) => {
-  const { type, category, product, framework, version, filePath: rawFilePath, fileName } = req.body;
+  const { type, product, framework, version, filePath: rawFilePath, fileName } = req.body;
   if (!rawFilePath || !fileName) {
     return res.status(400).json({ error: 'No file to import' });
   }
@@ -1868,7 +1873,7 @@ app.post('/api/bank/import-file', (req, res) => {
 
     // Update changelog
     const changelogPath = path.join(BANK_ROOT, 'changelog.md');
-    const changeEntry = `\n## ${today} - File Import\n- **Action:** Imported original file\n- **Type:** ${type}\n- **Destination:** ${path.relative(BANK_ROOT, targetPath).replace(/\\/g, '/')}\n- **Source:** ${fileName}\n`;
+    const changeEntry = `\n## ${today} - File Import\n- **Action:** Imported original file\n- **Type:** ${type}\n- **Destination:** ${bankRelPath(targetPath)}\n- **Source:** ${fileName}\n`;
     if (fs.existsSync(changelogPath)) {
       const existing = fs.readFileSync(changelogPath, 'utf-8');
       fs.writeFileSync(changelogPath, existing + changeEntry);
@@ -1876,7 +1881,7 @@ app.post('/api/bank/import-file', (req, res) => {
 
     res.json({
       success: true,
-      path: path.relative(BANK_ROOT, targetPath).replace(/\\/g, '/'),
+      path: bankRelPath(targetPath),
       fileName: path.basename(targetPath)
     });
   } catch (err) {
@@ -1945,7 +1950,7 @@ app.post('/api/bank/import', (req, res) => {
 
     // Update changelog
     const changelogPath = path.join(BANK_ROOT, 'changelog.md');
-    const changeEntry = `\n## ${today} - Import\n- **Action:** Imported ${entries.length} Q&A entries\n- **Type:** ${type}\n- **Destination:** ${path.relative(BANK_ROOT, targetPath).replace(/\\/g, '/')}\n- **Source:** ${fileName || 'Dashboard import'}\n`;
+    const changeEntry = `\n## ${today} - Import\n- **Action:** Imported ${entries.length} Q&A entries\n- **Type:** ${type}\n- **Destination:** ${bankRelPath(targetPath)}\n- **Source:** ${fileName || 'Dashboard import'}\n`;
     if (fs.existsSync(changelogPath)) {
       const existing = fs.readFileSync(changelogPath, 'utf-8');
       fs.writeFileSync(changelogPath, existing + changeEntry);
@@ -1953,7 +1958,7 @@ app.post('/api/bank/import', (req, res) => {
 
     res.json({
       success: true,
-      path: path.relative(BANK_ROOT, targetPath).replace(/\\/g, '/'),
+      path: bankRelPath(targetPath),
       entriesImported: entries.length,
       mode
     });
@@ -1982,11 +1987,11 @@ app.post('/api/migrate', aiLimiter, upload.fields([{ name: 'sourceFile' }, { nam
   try {
     // Parse source file
     sendEvent('progress', { step: 'Parsing source file...', percent: 5 });
-    const sourceQuestions = extractQuestionsFromExcel(req.files.sourceFile[0].path, req.files.sourceFile[0].originalname);
+    const sourceQuestions = extractQuestionsFromExcel(req.files.sourceFile[0].path);
 
     // Parse target file
     sendEvent('progress', { step: 'Parsing target file...', percent: 15 });
-    const targetQuestions = extractQuestionsFromExcel(req.files.targetFile[0].path, req.files.targetFile[0].originalname);
+    const targetQuestions = extractQuestionsFromExcel(req.files.targetFile[0].path);
 
     sendEvent('progress', { step: `Found ${sourceQuestions.length} source questions, ${targetQuestions.length} target questions`, percent: 20 });
 
@@ -2254,7 +2259,7 @@ ${product ? `- CRITICAL: Only use answers specific to ${product}. Never cross-co
 Respond ONLY with the JSON array.`;
 
     const body = JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: MODEL_SONNET,
       max_tokens: 32000,
       messages: [{ role: 'user', content: prompt }]
     });
@@ -2298,7 +2303,7 @@ Respond ONLY with the JSON array.`;
   });
 }
 
-function extractQuestionsFromExcel(filePath, originalName) {
+function extractQuestionsFromExcel(filePath) {
   const workbook = XLSX.readFile(filePath);
   const questions = [];
 
@@ -2366,7 +2371,7 @@ RULES:
 Respond ONLY with the JSON array.`;
 
     const body = JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: MODEL_SONNET,
       max_tokens: 50000,
       messages: [{ role: 'user', content: prompt }]
     });
@@ -2418,295 +2423,6 @@ Respond ONLY with the JSON array.`;
   });
 }
 
-// --- Multi-Provider AI Functions ---
-
-// API endpoint to set AI provider
-app.post('/api/ai/provider', (req, res) => {
-  const { provider, apiKey, model } = req.body;
-  if (!provider || !apiKey) return res.status(400).json({ error: 'Provider and API key required' });
-  aiProviderConfigs[provider] = { apiKey, model: model || AI_MODELS[provider]?.default };
-  res.json({ success: true, provider, model: aiProviderConfigs[provider].model });
-});
-
-// Get available providers and models
-app.get('/api/ai/providers', (req, res) => {
-  const configured = {};
-  for (const [provider, config] of Object.entries(aiProviderConfigs)) {
-    configured[provider] = { ...AI_MODELS[provider], activeModel: config.model };
-  }
-  res.json({ available: AI_MODELS, configured });
-});
-
-// Call AI provider based on config
-async function callAIProvider(provider, model, systemPrompt, userMessages, onChunk) {
-  const config = aiProviderConfigs[provider];
-  if (!config) throw new Error(`AI provider ${provider} not configured`);
-
-  switch (provider) {
-    case 'claude':
-      return callClaudeStreamAPI(config.apiKey, model, systemPrompt, userMessages, onChunk);
-    case 'openai':
-      return callOpenAIAPI(config.apiKey, model, systemPrompt, userMessages, onChunk);
-    case 'gemini':
-      return callGeminiAPI(config.apiKey, model, systemPrompt, userMessages, onChunk);
-    case 'cohere':
-      return callCohereAPI(config.apiKey, model, systemPrompt, userMessages, onChunk);
-    case 'huggingface':
-      return callHuggingFaceAPI(config.apiKey, model, systemPrompt, userMessages, onChunk);
-    default:
-      throw new Error(`Unknown AI provider: ${provider}`);
-  }
-}
-
-// Claude API call (multi-provider streaming)
-async function callClaudeStreamAPI(apiKey, model, systemPrompt, userMessages, onChunk) {
-  return new Promise((resolve, reject) => {
-    const body = JSON.stringify({
-      model,
-      max_tokens: 4096,
-      system: systemPrompt,
-      messages: userMessages
-    });
-
-    const options = {
-      hostname: 'api.anthropic.com',
-      path: '/v1/messages',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'Content-Length': Buffer.byteLength(body)
-      }
-    };
-
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', chunk => {
-        data += chunk;
-        try {
-          const lines = data.split('\n');
-          for (let i = 0; i < lines.length - 1; i++) {
-            if (lines[i].startsWith('data: ')) {
-              const event = JSON.parse(lines[i].slice(6));
-              if (event.type === 'content_block_delta' && event.delta?.text) {
-                onChunk(event.delta.text);
-              }
-            }
-          }
-          data = lines[lines.length - 1];
-        } catch (e) { }
-      });
-      res.on('end', () => {
-        try {
-          const response = JSON.parse(data.replace(/^data: /, ''));
-          resolve(response.content[0]?.text || '');
-        } catch (e) {
-          reject(new Error('Failed to parse Claude response'));
-        }
-      });
-    });
-    req.on('error', reject);
-    req.write(body);
-    req.end();
-  });
-}
-
-// OpenAI API call
-async function callOpenAIAPI(apiKey, model, systemPrompt, userMessages, onChunk) {
-  return new Promise((resolve, reject) => {
-    const body = JSON.stringify({
-      model,
-      max_tokens: 4096,
-      stream: true,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        ...userMessages
-      ]
-    });
-
-    const options = {
-      hostname: 'api.openai.com',
-      path: '/v1/chat/completions',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Length': Buffer.byteLength(body)
-      }
-    };
-
-    const req = https.request(options, (res) => {
-      let buffer = '';
-      res.on('data', chunk => {
-        buffer += chunk.toString();
-        const lines = buffer.split('\n');
-        buffer = lines[lines.length - 1];
-        for (let i = 0; i < lines.length - 1; i++) {
-          const line = lines[i].trim();
-          if (line.startsWith('data: ') && line !== 'data: [DONE]') {
-            try {
-              const data = JSON.parse(line.slice(6));
-              if (data.choices?.[0]?.delta?.content) {
-                onChunk(data.choices[0].delta.content);
-              }
-            } catch (e) { }
-          }
-        }
-      });
-      res.on('end', () => resolve(''));
-    });
-    req.on('error', reject);
-    req.write(body);
-    req.end();
-  });
-}
-
-// Google Gemini API call
-async function callGeminiAPI(apiKey, model, systemPrompt, userMessages, onChunk) {
-  return new Promise((resolve, reject) => {
-    const contents = [
-      { role: 'user', parts: [{ text: systemPrompt }] },
-      ...userMessages.map(m => ({
-        role: m.role === 'user' ? 'user' : 'model',
-        parts: [{ text: m.content }]
-      }))
-    ];
-
-    const body = JSON.stringify({ contents });
-    const encodedKey = encodeURIComponent(apiKey);
-
-    const options = {
-      hostname: 'generativelanguage.googleapis.com',
-      path: `/v1beta/models/${model}:streamGenerateContent?key=${encodedKey}`,
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(body)
-      }
-    };
-
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', chunk => {
-        data += chunk.toString();
-        try {
-          const lines = data.split('\n');
-          for (let i = 0; i < lines.length - 1; i++) {
-            const json = JSON.parse(lines[i]);
-            if (json.candidates?.[0]?.content?.parts?.[0]?.text) {
-              onChunk(json.candidates[0].content.parts[0].text);
-            }
-          }
-          data = lines[lines.length - 1];
-        } catch (e) { }
-      });
-      res.on('end', () => resolve(''));
-    });
-    req.on('error', reject);
-    req.write(body);
-    req.end();
-  });
-}
-
-// Cohere API call
-async function callCohereAPI(apiKey, model, systemPrompt, userMessages, onChunk) {
-  return new Promise((resolve, reject) => {
-    const messages = [
-      { role: 'user', message: systemPrompt },
-      ...userMessages.map(m => ({
-        role: m.role,
-        message: m.content
-      }))
-    ];
-
-    const body = JSON.stringify({
-      model,
-      max_tokens: 4096,
-      stream: true,
-      messages
-    });
-
-    const options = {
-      hostname: 'api.cohere.ai',
-      path: '/v1/chat',
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(body)
-      }
-    };
-
-    const req = https.request(options, (res) => {
-      let buffer = '';
-      res.on('data', chunk => {
-        buffer += chunk.toString();
-        const lines = buffer.split('\n');
-        buffer = lines[lines.length - 1];
-        for (let i = 0; i < lines.length - 1; i++) {
-          const line = lines[i].trim();
-          if (line) {
-            try {
-              const data = JSON.parse(line);
-              if (data.text) onChunk(data.text);
-            } catch (e) { }
-          }
-        }
-      });
-      res.on('end', () => resolve(''));
-    });
-    req.on('error', reject);
-    req.write(body);
-    req.end();
-  });
-}
-
-// HuggingFace API call
-async function callHuggingFaceAPI(apiKey, model, systemPrompt, userMessages, onChunk) {
-  return new Promise((resolve, reject) => {
-    const fullPrompt = systemPrompt + '\n' + userMessages.map(m => `${m.role}: ${m.content}`).join('\n');
-
-    const body = JSON.stringify({
-      inputs: fullPrompt,
-      parameters: {
-        max_new_tokens: 4096,
-        do_sample: true,
-        temperature: 0.7
-      }
-    });
-
-    const options = {
-      hostname: 'api-inference.huggingface.co',
-      path: `/models/${model}`,
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(body)
-      }
-    };
-
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', chunk => {
-        data += chunk.toString();
-        onChunk(chunk.toString());
-      });
-      res.on('end', () => {
-        try {
-          const response = JSON.parse(data);
-          resolve(response[0]?.generated_text || '');
-        } catch (e) {
-          resolve(data);
-        }
-      });
-    });
-    req.on('error', reject);
-    req.write(body);
-    req.end();
-  });
-}
 
 // --- Helper Functions ---
 
@@ -2721,7 +2437,7 @@ function readMarkdownFiles(dir) {
       } else if (entry.name.endsWith('.md') && !entry.name.startsWith('README')) {
         try {
           results.push({
-            file: path.relative(BANK_ROOT, fullPath).replace(/\\/g, '/'),
+            file: bankRelPath(fullPath),
             content: fs.readFileSync(fullPath, 'utf-8')
           });
         } catch { /* skip */ }
@@ -2750,7 +2466,7 @@ function readMarkdownFiles(dir) {
           }
           if (excelContent.length > 50) {
             results.push({
-              file: path.relative(BANK_ROOT, fullPath).replace(/\\/g, '/'),
+              file: bankRelPath(fullPath),
               content: excelContent.substring(0, 30000) // Cap at 30k chars per file
             });
           }
@@ -2759,7 +2475,7 @@ function readMarkdownFiles(dir) {
         try {
           const text = fs.readFileSync(fullPath, 'utf-8');
           if (text.trim().length > 10) {
-            results.push({ file: path.relative(BANK_ROOT, fullPath).replace(/\\/g, '/'), content: text.substring(0, 20000) });
+            results.push({ file: bankRelPath(fullPath), content: text.substring(0, 20000) });
           }
         } catch { /* skip */ }
       } else if (/\.(json)$/i.test(entry.name)) {
@@ -2768,35 +2484,35 @@ function readMarkdownFiles(dir) {
           const parsed = JSON.parse(raw);
           const text = JSON.stringify(parsed, null, 2);
           if (text.length > 10) {
-            results.push({ file: path.relative(BANK_ROOT, fullPath).replace(/\\/g, '/'), content: `[JSON: ${entry.name}]\n${text.substring(0, 20000)}` });
+            results.push({ file: bankRelPath(fullPath), content: `[JSON: ${entry.name}]\n${text.substring(0, 20000)}` });
           }
         } catch { /* skip */ }
       } else if (/\.(docx)$/i.test(entry.name)) {
         try {
-          const AdmZip = require('adm-zip');
+    
           const zip = new AdmZip(fullPath);
           const content = zip.readAsText('word/document.xml');
-          const text = content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+          const text = stripTags(content);
           if (text.length > 20) {
-            results.push({ file: path.relative(BANK_ROOT, fullPath).replace(/\\/g, '/'), content: `[Word: ${entry.name}]\n${text.substring(0, 20000)}` });
+            results.push({ file: bankRelPath(fullPath), content: `[Word: ${entry.name}]\n${text.substring(0, 20000)}` });
           }
         } catch { /* skip */ }
       } else if (/\.(pdf)$/i.test(entry.name)) {
         // Mark PDF for async parsing — will be handled by parsePDFs()
-        results.push({ file: path.relative(BANK_ROOT, fullPath).replace(/\\/g, '/'), content: '', _pdfPath: fullPath });
+        results.push({ file: bankRelPath(fullPath), content: '', _pdfPath: fullPath });
       } else if (/\.(pptx)$/i.test(entry.name)) {
         try {
-          const AdmZip = require('adm-zip');
+    
           const zip = new AdmZip(fullPath);
           let pptText = `[PowerPoint: ${entry.name}]\n`;
           const slideEntries = zip.getEntries().filter(e => /^ppt\/slides\/slide\d+\.xml$/i.test(e.entryName)).sort((a, b) => a.entryName.localeCompare(b.entryName));
           slideEntries.forEach((slide, i) => {
             const xml = slide.getData().toString('utf-8');
-            const text = xml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+            const text = stripTags(xml);
             if (text.length > 10) pptText += `\nSlide ${i + 1}:\n${text}\n`;
           });
           if (pptText.length > 50) {
-            results.push({ file: path.relative(BANK_ROOT, fullPath).replace(/\\/g, '/'), content: pptText.substring(0, 30000) });
+            results.push({ file: bankRelPath(fullPath), content: pptText.substring(0, 30000) });
           }
         } catch { /* skip */ }
       } else if (/\.(html?|xml)$/i.test(entry.name)) {
@@ -2805,7 +2521,7 @@ function readMarkdownFiles(dir) {
           const text = raw.replace(/<[^>]+>/g, ' ').replace(/&[a-z]+;/gi, ' ').replace(/\s+/g, ' ').trim();
           if (text.length > 20) {
             const label = entry.name.endsWith('.xml') ? 'XML' : 'HTML';
-            results.push({ file: path.relative(BANK_ROOT, fullPath).replace(/\\/g, '/'), content: `[${label}: ${entry.name}]\n${text.substring(0, 30000)}` });
+            results.push({ file: bankRelPath(fullPath), content: `[${label}: ${entry.name}]\n${text.substring(0, 30000)}` });
           }
         } catch { /* skip */ }
       } else if (/\.(rtf)$/i.test(entry.name)) {
@@ -2814,7 +2530,7 @@ function readMarkdownFiles(dir) {
           // Basic RTF text extraction: strip control words and groups
           const text = raw.replace(/\{\\[^{}]*\}/g, '').replace(/\\[a-z]+\d*\s?/gi, '').replace(/[{}]/g, '').replace(/\s+/g, ' ').trim();
           if (text.length > 20) {
-            results.push({ file: path.relative(BANK_ROOT, fullPath).replace(/\\/g, '/'), content: `[RTF: ${entry.name}]\n${text.substring(0, 30000)}` });
+            results.push({ file: bankRelPath(fullPath), content: `[RTF: ${entry.name}]\n${text.substring(0, 30000)}` });
           }
         } catch { /* skip */ }
       }
@@ -2824,7 +2540,7 @@ function readMarkdownFiles(dir) {
 }
 
 async function parsePDFs(files) {
-  const pdfParse = require('pdf-parse');
+
   for (const f of files) {
     if (f._pdfPath) {
       try {
@@ -2941,12 +2657,6 @@ async function loadKnowledgeBase(product) {
     ].join('\n');
   }
 
-  // --- Label product-matched files in shared sections ---
-  const labelFile = (f) => {
-    const tag = product ? ` [${product}]` : '';
-    return `\n--- ${f.file}${tag} ---\n${f.content}`;
-  };
-
   return [
     '=== CATEGORY ANSWERS (Organization-wide Q&A — applies to ALL products) ===',
     '(Note: Answers marked [Your answer here] are placeholders — use Confluence or your knowledge to draft real answers)',
@@ -3018,7 +2728,7 @@ ${questions.map(q => `[${q.id}] ${q.question}`).join('\n')}
 Respond ONLY with the JSON array, no other text.`;
 
     const body = JSON.stringify({
-      model: 'claude-opus-4-20250514',
+      model: MODEL_OPUS,
       max_tokens: 32000,
       messages: [{ role: 'user', content: prompt }]
     });
@@ -3140,40 +2850,21 @@ function writeOutputExcel(answers, outputPath, originalInfo) {
       ws[XLSX.utils.encode_cell({ r: range.s.r, c: aiConfColIdx })] = { t: 's', v: 'Confidence' };
       ws[XLSX.utils.encode_cell({ r: range.s.r, c: aiFlagsColIdx })] = { t: 's', v: 'Flags' };
 
-      // Build answer lookup by ID, question text, and row index
-      const answerByID = {};
-      const answerByQ = {};
-      const answerByIdx = {};
-      for (const a of answers) {
-        if (a.id) answerByID[String(a.id).trim()] = a;
-        if (a.question) answerByQ[a.question.trim().toLowerCase()] = a;
-        if (a.index != null) answerByIdx[a.index] = a;
-      }
+      const lookup = buildAnswerLookup(answers);
 
       // Write answers into cells row by row
       let dataRowIdx = 0;
       for (let r = range.s.r + 1; r <= range.e.r; r++) {
-        // Get row ID
-        let rowId = '';
-        if (idColIdx != null) {
-          const idCell = ws[XLSX.utils.encode_cell({ r, c: idColIdx })];
-          if (idCell && idCell.v != null) rowId = String(idCell.v).trim();
-        }
+        const rowId = idColIdx != null
+          ? String(ws[XLSX.utils.encode_cell({ r, c: idColIdx })]?.v ?? '').trim()
+          : '';
+        const rowQ = qColIdx != null
+          ? String(ws[XLSX.utils.encode_cell({ r, c: qColIdx })]?.v ?? '').trim()
+          : '';
 
-        // Get row question
-        let rowQ = '';
-        if (qColIdx != null) {
-          const qCell = ws[XLSX.utils.encode_cell({ r, c: qColIdx })];
-          if (qCell && qCell.v != null) rowQ = String(qCell.v).trim();
-        }
-
-        // Skip empty rows
         if (!rowQ && !rowId) { dataRowIdx++; continue; }
 
-        // Match answer by ID first, then by question text, then by row index
-        let match = answerByID[rowId];
-        if (!match && rowQ) match = answerByQ[rowQ.toLowerCase()];
-        if (!match) match = answerByIdx[dataRowIdx];
+        const match = matchAnswer(lookup, rowId, rowQ, dataRowIdx);
         dataRowIdx++;
 
         if (match) {
@@ -3203,8 +2894,6 @@ function writeOutputExcel(answers, outputPath, originalInfo) {
       ws['!cols'][aiSourceColIdx] = { wch: 30 };
       ws['!cols'][aiConfColIdx] = { wch: 12 };
       ws['!cols'][aiFlagsColIdx] = { wch: 25 };
-
-      console.log(`Excel export: Answer column = ${existingAnsColIdx != null ? `existing col ${existingAnsColIdx} ("${headerNames[existingAnsColIdx]}")` : 'new appended column'}, matched ${answers.length} answers`);
 
       // Write back — the original file was already copied, so all other sheets/formatting are intact
       XLSX.writeFile(wb, outputPath);
@@ -3271,15 +2960,15 @@ app.post('/api/bank/save-answer', (req, res) => {
 
     // Log to changelog
     const changelogPath = path.join(BANK_ROOT, 'changelog.md');
-    const changeEntry = `\n## ${today} - Chat Save\n- **Action:** Saved corrected answer from chat\n- **Question:** ${question.substring(0, 80)}...\n- **Destination:** ${path.relative(BANK_ROOT, targetPath).replace(/\\/g, '/')}\n`;
+    const changeEntry = `\n## ${today} - Chat Save\n- **Action:** Saved corrected answer from chat\n- **Question:** ${question.substring(0, 80)}...\n- **Destination:** ${bankRelPath(targetPath)}\n`;
     if (fs.existsSync(changelogPath)) {
       fs.appendFileSync(changelogPath, changeEntry);
     }
 
     res.json({
       success: true,
-      path: path.relative(BANK_ROOT, targetPath).replace(/\\/g, '/'),
-      message: `Saved to ${path.relative(BANK_ROOT, targetPath).replace(/\\/g, '/')}`
+      path: bankRelPath(targetPath),
+      message: `Saved to ${bankRelPath(targetPath)}`
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
