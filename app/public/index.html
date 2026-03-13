@@ -674,16 +674,15 @@ html.light .admin-status-row{border-bottom-color:#f0f0f0}
 <div class="mf"><div class="mfb" id="mSB" onclick="document.getElementById('mSI').click()"><div class="ml">Source (Old)</div><div style="font-size:20px;margin:4px 0">&#128196;</div><div class="mn2" id="mSN">Select source file</div><div class="mc2" id="mSC"></div><input type="file" id="mSI" accept=".xlsx,.xls,.csv" onchange="hMF('source',this.files[0])"></div><div class="marr">&rarr;</div><div class="mfb" id="mTB" onclick="document.getElementById('mTI').click()"><div class="ml">Target (New)</div><div style="font-size:20px;margin:4px 0">&#128196;</div><div class="mn2" id="mTN">Select target file</div><div class="mc2" id="mTC"></div><input type="file" id="mTI" accept=".xlsx,.xls,.csv" onchange="hMF('target',this.files[0])"></div></div><div style="text-align:center"><button class="bb" id="migBtn" onclick="startMig()" disabled>Start Migration</button></div></div><div class="bc prg" id="migPrg"><h2>Migrating...</h2><div class="pb"><div class="pf" id="migBar"></div></div><div class="pt" id="migPT">Starting...</div></div><div class="bc" id="migRes" style="display:none"><h2>Migration Results</h2><div class="sr"><div class="sc t"><div class="n" id="migT">0</div><div class="l">Total</div></div><div class="sc h"><div class="n" id="migH">0</div><div class="l">High</div></div><div class="sc m"><div class="n" id="migM">0</div><div class="l">Medium</div></div><div class="sc w"><div class="n" id="migL">0</div><div class="l">Low/None</div></div></div><div class="fb"><button class="fbtn on" onclick="fMig('all',this)">All</button><button class="fbtn" onclick="fMig('high',this)">High</button><button class="fbtn" onclick="fMig('medium',this)">Medium</button><button class="fbtn" onclick="fMig('low',this)">Low</button><button class="fbtn" onclick="fMig('none',this)">None</button></div><div class="mmap" id="mMap"></div><div class="abr"><button class="bb sec" onclick="resetMig()">New Migration</button><button class="bb dl" onclick="expMig()">Download Excel</button></div></div></div>
 </div>
 <!-- Admin Settings Panel -->
-<div class="pn bp" id="adminPanel"><div class="bi" style="max-width:100%">
-<div style="margin-bottom:20px"><h2 style="font-size:18px;font-weight:700;margin-bottom:4px">Confluence & Jira Integration</h2><p style="color:var(--tx2);font-size:12px">Configure your Atlassian authentication, project settings, and knowledge sources</p></div>
+<div class="pn bp" id="adminPanel"><div class="bi" style="max-width:880px;align-self:center;width:100%">
 <!-- Admin sub-tabs -->
 <div class="admin-tabs" id="adminTabs">
 <button class="admin-tab on" onclick="swAdminTab('knowledge',this)">Authentication</button>
 <button class="admin-tab" onclick="swAdminTab('quality',this)">Answer Quality</button>
-<button class="admin-tab" onclick="swAdminTab('system',this)">System Status</button>
 <button class="admin-tab" onclick="swAdminTab('products',this)">Products</button>
 <button class="admin-tab" onclick="swAdminTab('frameworks',this)">Frameworks</button>
-<button class="admin-tab" onclick="swAdminTab('advanced',this)">Advanced</button>
+<button class="admin-tab" onclick="swAdminTab('status',this)">Status</button>
+<button class="admin-tab" onclick="swAdminTab('bank',this)">Answer Bank</button>
 </div>
 
 <!-- Authentication Tab -->
@@ -718,18 +717,26 @@ html.light .admin-status-row{border-bottom-color:#f0f0f0}
 </div>
 </div>
 
-<!-- Connection Status -->
+</div>
+
+<!-- Status Tab -->
+<div class="admin-section" id="adminStatus">
 <div class="bc admin-card">
 <h2 style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--gn)" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>Connection Status</h2>
 <div id="atlConnStatus" style="margin-top:8px">
+<div class="admin-status-row"><span class="admin-status-label">Server</span><span class="admin-status-badge ok" id="sysServer">Running</span></div>
 <div class="admin-status-row"><span class="admin-status-label"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:6px"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>Confluence</span><span class="admin-status-badge" id="sysConfluence">Checking...</span></div>
 <div class="admin-status-row"><span class="admin-status-label"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:6px"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M3 9h6M3 15h6"/></svg>Jira</span><span class="admin-status-badge" id="sysJira">Checking...</span></div>
 <div class="admin-status-row"><span class="admin-status-label"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:6px"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>Project Key</span><span class="admin-status-badge" id="sysProject">ISC</span></div>
+<div class="admin-status-row"><span class="admin-status-label">Answer Bank</span><span class="admin-status-badge" id="sysBank">Checking...</span></div>
 <div class="admin-status-row"><span class="admin-status-label"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:6px"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>Claude API</span><span class="admin-status-badge" id="sysAI">Not configured</span></div>
+</div>
+<div class="admin-actions" style="margin-top:10px"><button class="bb sec" onclick="checkSystemStatus()">Refresh Status</button></div>
 </div>
 </div>
 
-<!-- Local Answer Bank -->
+<!-- Answer Bank Tab -->
+<div class="admin-section" id="adminBank">
 <div class="bc admin-card">
 <h2 style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--gn)" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>Local Answer Bank</h2>
 <p class="admin-desc">Your organization's security knowledge base</p>
@@ -742,7 +749,7 @@ html.light .admin-status-row{border-bottom-color:#f0f0f0}
 <div class="admin-stat"><div class="admin-stat-n" id="bankPQCount">—</div><div class="admin-stat-l">Past Q's</div></div>
 <div class="admin-stat"><div class="admin-stat-n" id="bankTotalFiles">—</div><div class="admin-stat-l">Total Files</div></div>
 </div>
-<div id="bankFileList" style="display:none;margin-top:8px;max-height:200px;overflow-y:auto;font-size:11px;color:var(--tx2);border:1px solid var(--bd);border-radius:6px;padding:8px"></div>
+<div id="bankFileList" style="display:none;margin-top:8px;max-height:300px;overflow-y:auto;font-size:11px;color:var(--tx2);border:1px solid var(--bd);border-radius:6px;padding:8px"></div>
 <div class="admin-actions" style="margin-top:12px"><button class="bb sec" onclick="refreshBankStats()">Refresh Stats</button><button class="bb sec" onclick="toggleBankFiles()" style="margin-left:8px">View Files</button></div>
 </div>
 </div>
@@ -764,20 +771,6 @@ html.light .admin-status-row{border-bottom-color:#f0f0f0}
 </div>
 </div>
 
-<!-- System Status Tab -->
-<div class="admin-section" id="adminSystem">
-<div class="bc admin-card">
-<h2>System Status</h2>
-<div id="sysStatus" style="margin-top:12px">
-<div class="admin-status-row"><span class="admin-status-label">Server</span><span class="admin-status-badge ok" id="sysServer">Running</span></div>
-<div class="admin-status-row"><span class="admin-status-label">Confluence</span><span class="admin-status-badge" id="sysConfluence2">Checking...</span></div>
-<div class="admin-status-row"><span class="admin-status-label">Jira</span><span class="admin-status-badge" id="sysJira2">Checking...</span></div>
-<div class="admin-status-row"><span class="admin-status-label">Answer Bank</span><span class="admin-status-badge" id="sysBank">Checking...</span></div>
-<div class="admin-status-row"><span class="admin-status-label">Claude API</span><span class="admin-status-badge" id="sysAI2">Not configured</span></div>
-</div>
-<div class="admin-actions" style="margin-top:12px"><button class="bb sec" onclick="checkSystemStatus()">Refresh Status</button></div>
-</div>
-</div>
 
 <!-- Advanced Tab -->
 <div class="admin-section" id="adminProducts">
@@ -810,17 +803,6 @@ html.light .admin-status-row{border-bottom-color:#f0f0f0}
 </div>
 </div>
 
-<div class="admin-section" id="adminAdvanced">
-<div class="bc admin-card">
-<h2>Advanced Settings</h2>
-<p class="admin-desc">Server configuration and debug options</p>
-<div class="admin-form">
-<div class="admin-field"><label>Answer Bank Path</label><input type="text" class="admin-input" id="cfgBankPath" disabled style="opacity:.7"><span class="admin-hint">Configured on the server side</span></div>
-<div class="admin-field"><label>Output Directory</label><input type="text" class="admin-input" id="cfgOutputPath" disabled style="opacity:.7"></div>
-<div class="admin-field"><label>Server Port</label><input type="text" class="admin-input" id="cfgPort" disabled style="opacity:.7;max-width:100px"></div>
-</div>
-</div>
-</div>
 </div></div>
 
 <!-- Save to Bank modal -->
@@ -1259,7 +1241,7 @@ else{res.className='save-res err';res.textContent=d.error||'Failed'}}catch(e){co
 function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
 
 // --- Admin Settings ---
-function swAdminTab(tab,btn){document.querySelectorAll('.admin-tab').forEach(b=>b.classList.remove('on'));btn.classList.add('on');document.querySelectorAll('.admin-section').forEach(s=>s.classList.remove('on'));document.getElementById({knowledge:'adminKnowledge',quality:'adminQuality',system:'adminSystem',products:'adminProducts',frameworks:'adminFrameworks',advanced:'adminAdvanced'}[tab]).classList.add('on');if(tab==='products')renderProductList();if(tab==='frameworks')renderFWList()}
+function swAdminTab(tab,btn){document.querySelectorAll('.admin-tab').forEach(b=>b.classList.remove('on'));btn.classList.add('on');document.querySelectorAll('.admin-section').forEach(s=>s.classList.remove('on'));document.getElementById({knowledge:'adminKnowledge',status:'adminStatus',bank:'adminBank',quality:'adminQuality',products:'adminProducts',frameworks:'adminFrameworks'}[tab]).classList.add('on');if(tab==='products')renderProductList();if(tab==='frameworks')renderFWList();if(tab==='status')checkSystemStatus();if(tab==='bank')refreshBankStats()}
 
 async function loadAdminSettings(){
 // Load AI model
@@ -1299,26 +1281,15 @@ async function refreshBankStats(){try{const r=await fetch('/api/debug/bank-stats
 function toggleBankFiles(){const el=document.getElementById('bankFileList');if(el.style.display!=='none'){el.style.display='none';return}if(!_bankStats?.fileList?.length){el.style.display='block';el.textContent='No files in answer bank';return}el.style.display='block';el.innerHTML=_bankStats.fileList.map(f=>`<div style="padding:2px 0;border-bottom:1px solid var(--bd)">${esc(f)}</div>`).join('')}
 
 async function checkSystemStatus(){
-// Server is always OK if we can call this
-document.getElementById('sysServer').textContent='Running';document.getElementById('sysServer').className='admin-status-badge ok';
-// Confluence — update both auth tab and system status tab badges
-try{const r=await fetch('/api/confluence/test',{method:'POST'});const d=await r.json();
-['sysConfluence','sysConfluence2'].forEach(id=>{const el=document.getElementById(id);if(!el)return;if(d.success){el.textContent='Connected';el.className='admin-status-badge ok'}else{el.textContent='Error';el.className='admin-status-badge err'}})}catch{['sysConfluence','sysConfluence2'].forEach(id=>{const el=document.getElementById(id);if(!el)return;el.textContent='Not configured';el.className='admin-status-badge warn'})}
-// Jira
-try{const r=await fetch('/api/jira/test',{method:'POST'});const d=await r.json();
-['sysJira','sysJira2'].forEach(id=>{const el=document.getElementById(id);if(!el)return;if(d.success){el.textContent='Connected';el.className='admin-status-badge ok'}else{el.textContent='Error';el.className='admin-status-badge err'}})}catch{['sysJira','sysJira2'].forEach(id=>{const el=document.getElementById(id);if(!el)return;el.textContent='Not configured';el.className='admin-status-badge warn'})}
-// Project key
-try{const r=await fetch('/api/atlassian/project');const d=await r.json();const el=document.getElementById('sysProject');if(el){el.textContent=d.project||'ISC';el.className='admin-status-badge ok'}const inp=document.getElementById('cfgAtlProject');if(inp&&d.project)inp.value=d.project}catch{}
-// Bank
-try{const r=await fetch('/api/debug/bank-stats');const d=await r.json();const el=document.getElementById('sysBank');el.textContent=`${d.totalFiles} files loaded`;el.className='admin-status-badge ok'}catch{document.getElementById('sysBank').textContent='Error';document.getElementById('sysBank').className='admin-status-badge err'}
-// Claude API
+const setBadge=(id,txt,cls)=>{const el=document.getElementById(id);if(el){el.textContent=txt;el.className='admin-status-badge '+cls}};
+setBadge('sysServer','Running','ok');
+try{const r=await fetch('/api/confluence/test',{method:'POST'});const d=await r.json();setBadge('sysConfluence',d.success?'Connected':'Error',d.success?'ok':'err')}catch{setBadge('sysConfluence','Not configured','warn')}
+try{const r=await fetch('/api/jira/test',{method:'POST'});const d=await r.json();setBadge('sysJira',d.success?'Connected':'Error',d.success?'ok':'err')}catch{setBadge('sysJira','Not configured','warn')}
+try{const r=await fetch('/api/atlassian/project');const d=await r.json();setBadge('sysProject',d.project||'ISC','ok');const inp=document.getElementById('cfgAtlProject');if(inp&&d.project)inp.value=d.project}catch{}
+try{const r=await fetch('/api/debug/bank-stats');const d=await r.json();setBadge('sysBank',`${d.totalFiles} files`,'ok')}catch{setBadge('sysBank','Error','err')}
 const ak=localStorage.getItem('anthropic_api_key');
-const setAI=(txt,cls)=>{['sysAI','sysAI2'].forEach(id=>{const el=document.getElementById(id);if(el){el.textContent=txt;el.className='admin-status-badge '+cls}})};
-if(ak){setAI('Verifying...','warn');
-try{const r=await fetch('/api/test-api-key',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:ak})});const d=await r.json();if(d.success){setAI('Connected','ok')}else{setAI(d.error||'Invalid key','err')}}catch{setAI('Error','err')}}
-else{setAI('No API key','warn')}
-// Advanced fields
-document.getElementById('cfgBankPath').value='data/answer-bank/';document.getElementById('cfgOutputPath').value='data/output/';document.getElementById('cfgPort').value=location.port||'3456'}
+if(ak){setBadge('sysAI','Verifying...','warn');try{const r=await fetch('/api/test-api-key',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:ak})});const d=await r.json();setBadge('sysAI',d.success?'Connected':d.error||'Invalid key',d.success?'ok':'err')}catch{setBadge('sysAI','Error','err')}}
+else{setBadge('sysAI','No API key','warn')}}
 
 /* ── Global Task Tracker ── */
 const _tasks={};
