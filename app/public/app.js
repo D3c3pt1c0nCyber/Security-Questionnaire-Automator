@@ -900,9 +900,14 @@ setInterval(refreshBankStats,30000);
     if (btn && btn.dataset.importType) sIT(btn.dataset.importType, btn);
   });
 
-  // --- Import: submit/cancel ---
-  document.querySelectorAll('[data-action="subImpFile"]').forEach(function(b) { b.addEventListener('click', subImpFile); });
-  document.querySelectorAll('[data-action="resetImp"]').forEach(function(b) { b.addEventListener('click', resetImp); });
+  // --- Import: submit/cancel/reset — use delegation so dynamically-created buttons work ---
+  var importPanel = document.getElementById('importPanel');
+  if (importPanel) importPanel.addEventListener('click', function(e) {
+    var btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    if (btn.dataset.action === 'resetImp') resetImp();
+    if (btn.dataset.action === 'subImpFile') subImpFile();
+  });
 
   // --- Admin tabs (delegation on #adminTabs) ---
   var adminTabs = document.getElementById('adminTabs');
