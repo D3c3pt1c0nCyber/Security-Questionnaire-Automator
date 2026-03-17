@@ -1250,7 +1250,7 @@ app.delete('/api/jobs', (req, res) => {
   res.json({ cleared: true });
 });
 
-async function runBatchJob(job, { filePath, fileType, sheetName, questionColumn, idColumn, product, apiKey }) {
+async function runBatchJob(job, { filePath, fileType, sheetName, questionColumn, idColumn, responseColumn, yesNoColumn, product, apiKey }) {
   try {
     const ext = (fileType || '.xlsx').toLowerCase();
     jobUpdate(job, { step: 'Reading questionnaire...', progress: 5 });
@@ -1262,6 +1262,11 @@ async function runBatchJob(job, { filePath, fileType, sheetName, questionColumn,
       workbook = XLSX.readFile(filePath);
       const sheet = workbook.Sheets[sheetName || workbook.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      if (rows.length > 0) {
+        console.log('[debug] sheet columns:', Object.keys(rows[0]));
+        console.log('[debug] questionColumn param:', JSON.stringify(questionColumn));
+        console.log('[debug] first row sample:', JSON.stringify(rows[0]).slice(0, 200));
+      }
       questions = rows.map((row, idx) => ({
         index: idx,
         id: idColumn ? row[idColumn] : `Q${idx + 1}`,
@@ -1384,7 +1389,7 @@ async function runBatchJob(job, { filePath, fileType, sheetName, questionColumn,
     const outputExt = writableExts.includes(ext) ? (ext === '.xls' ? '.xlsx' : ext) : '.xlsx';
     const outputName = `completed-questionnaire-${timestamp}${outputExt}`;
     const outputPath = path.join(OUTPUT_DIR, outputName);
-    const originalInfo = { originalFilePath: filePath, sheetName: workbook ? (sheetName || workbook.SheetNames[0]) : null, questionColumn, idColumn, questions };
+    const originalInfo = { originalFilePath: filePath, sheetName: workbook ? (sheetName || workbook.SheetNames[0]) : null, questionColumn, idColumn, responseColumn: responseColumn || '', yesNoColumn: yesNoColumn || '', questions };
     const actualOutputPath = writeOutputFile(allAnswers, outputPath, originalInfo, ext);
     const actualOutputName = path.basename(actualOutputPath);
 
@@ -1415,7 +1420,7 @@ async function runBatchJob(job, { filePath, fileType, sheetName, questionColumn,
 }
 
 app.post('/api/process', aiLimiter, (req, res) => {
-  const { filePath: rawFilePath, fileType, sheetName, questionColumn, idColumn, product, apiKey: clientKey } = req.body;
+  const { filePath: rawFilePath, fileType, sheetName, questionColumn, idColumn, responseColumn, yesNoColumn, product, apiKey: clientKey } = req.body;
   const apiKey = clientKey || SERVER_API_KEY;
   if (!apiKey) return res.status(400).json({ error: 'Anthropic API key required' });
   if (!rawFilePath) return res.status(400).json({ error: 'No file specified' });
@@ -1424,7 +1429,7 @@ app.post('/api/process', aiLimiter, (req, res) => {
   catch { return res.status(403).json({ error: 'Invalid file path' }); }
   const job = createJob('batch', { fileName: path.basename(filePath), product: product || '' });
   res.json({ jobId: job.id });
-  runBatchJob(job, { filePath, fileType, sheetName, questionColumn, idColumn, product, apiKey });
+  runBatchJob(job, { filePath, fileType, sheetName, questionColumn, idColumn, responseColumn, yesNoColumn, product, apiKey });
 });
 
 
@@ -2799,6 +2804,15 @@ Respond ONLY with the JSON array, no other text.`;
   });
 }
 
+function extractYesNo(answer) {
+  const text = (answer || '').trim();
+  if (/^yes[\s,.\-:]/i.test(text) || /^yes$/i.test(text)) return 'Yes';
+  if (/^no[\s,.\-:]/i.test(text) || /^no$/i.test(text)) return 'No';
+  if (/\byes\b/i.test(text.slice(0, 80))) return 'Yes';
+  if (/\bno\b/i.test(text.slice(0, 80))) return 'No';
+  return 'N/A';
+}
+
 function writeOutputExcel(answers, outputPath, originalInfo) {
   try {
     if (originalInfo?.originalFilePath && fs.existsSync(originalInfo.originalFilePath)) {
@@ -2830,21 +2844,31 @@ function writeOutputExcel(answers, outputPath, originalInfo) {
       const qColIdx = qColName ? headers[qColName] : undefined;
       const idColIdx = idColName ? headers[idColName] : undefined;
 
+      // Find the Yes/No column index
+      const ynColName = originalInfo.yesNoColumn || '';
+      const ynColIdx = (ynColName && headers[ynColName] != null) ? headers[ynColName] : null;
+
       // Find existing answer/response column to write AI answers INTO it
-      const ansColPattern = /^(answer|response|reply|vendor.?response|assessment.?response|vendor.?answer|institution.?response)/i;
+      // If user specified a response column, use it directly; otherwise auto-detect
       let existingAnsColIdx = null;
-      for (const [name, colIdx] of Object.entries(headers)) {
-        if (name && ansColPattern.test(name)) {
-          existingAnsColIdx = colIdx;
-          break;
-        }
-      }
-      // Broader fallback: any header containing answer/response
-      if (existingAnsColIdx == null) {
+      const userRespCol = originalInfo.responseColumn;
+      if (userRespCol && headers[userRespCol] != null) {
+        existingAnsColIdx = headers[userRespCol];
+      } else {
+        const ansColPattern = /^(answer|response|reply|vendor.?response|assessment.?response|vendor.?answer|institution.?response)/i;
         for (const [name, colIdx] of Object.entries(headers)) {
-          if (name && /answer|response/i.test(name) && colIdx !== qColIdx && colIdx !== idColIdx) {
+          if (name && ansColPattern.test(name)) {
             existingAnsColIdx = colIdx;
             break;
+          }
+        }
+        // Broader fallback: any header containing answer/response
+        if (existingAnsColIdx == null) {
+          for (const [name, colIdx] of Object.entries(headers)) {
+            if (name && /answer|response/i.test(name) && colIdx !== qColIdx && colIdx !== idColIdx) {
+              existingAnsColIdx = colIdx;
+              break;
+            }
           }
         }
       }
@@ -2894,6 +2918,10 @@ function writeOutputExcel(answers, outputPath, originalInfo) {
           ws[XLSX.utils.encode_cell({ r, c: aiSourceColIdx })] = { t: 's', v: match.source || '' };
           ws[XLSX.utils.encode_cell({ r, c: aiConfColIdx })] = { t: 's', v: match.confidence || 'low' };
           ws[XLSX.utils.encode_cell({ r, c: aiFlagsColIdx })] = { t: 's', v: (match.flags || []).join(', ') };
+          // Write Yes/No extraction into the designated column
+          if (ynColIdx != null) {
+            ws[XLSX.utils.encode_cell({ r, c: ynColIdx })] = { t: 's', v: extractYesNo(match.answer) };
+          }
         }
       }
 
