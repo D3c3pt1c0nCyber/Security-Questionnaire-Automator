@@ -21,10 +21,10 @@ const PORT = process.env.PORT || 3456;
 const SERVER_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 
 // Config
-const BANK_ROOT = path.resolve(__dirname, '..', 'data', 'answer-bank');
-const OUTPUT_DIR = path.resolve(__dirname, '..', 'data', 'output');
+const BANK_ROOT = path.resolve(__dirname, 'data', 'answer-bank');
+const OUTPUT_DIR = path.resolve(__dirname, 'data', 'output');
 const UPLOAD_DIR = path.resolve(__dirname, 'uploads');
-const LOGS_FILE = path.resolve(__dirname, '..', 'data', 'activity-logs.json');
+const LOGS_FILE = path.resolve(__dirname, 'data', 'activity-logs.json');
 
 // Activity log
 let activityLogs = [];
