@@ -85,6 +85,10 @@ body::after{content:'';position:fixed;top:0;left:0;width:100%;height:100%;pointe
 .hitem-group{font-size:10px;font-weight:600;color:var(--tx3);padding:10px 10px 3px;user-select:none;letter-spacing:.04em;opacity:.7}
 .sb-foot{padding:10px 14px;border-top:1px solid var(--bd)}
 .sb-foot label{font-size:10px;color:var(--tx3);display:block;margin-bottom:4px;font-weight:500;letter-spacing:.3px;text-transform:uppercase}
+.sb-attr{margin-top:10px;padding-top:8px;border-top:1px solid var(--bd);font-size:9px;color:var(--tx3);line-height:1.6}
+.sb-attr a{color:var(--ac);text-decoration:none}.sb-attr a:hover{text-decoration:underline}
+.sb-attr-name{color:var(--tx);font-weight:600}
+.sb-attr-ver{display:inline-block;margin-top:2px;font-size:9px;color:var(--tx3)}
 .sb-sel{width:100%;padding:7px 8px;background:var(--sb-h);border:1px solid var(--bd);border-radius:6px;color:var(--tx);font-family:var(--f);font-size:12px;outline:none;cursor:pointer;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236a6a6a' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;padding-right:24px}
 .sb-sel:focus{border-color:var(--ac)}
 .api-row{display:flex;align-items:center;gap:8px;padding:7px 0 0;cursor:pointer;font-size:11px;color:var(--tx3);transition:color .15s}
@@ -660,6 +664,11 @@ html.light .modal-box textarea:focus,html.light .modal-box select:focus{border-c
 <label>Model</label>
 <select class="sb-sel" id="modelSelect" onchange="chModel(this.value)"><option value="claude-opus-4-20250514">Claude Opus 4</option><option value="claude-sonnet-4-20250514">Claude Sonnet 4</option><option value="claude-haiku-4-5-20251001">Claude Haiku 4.5</option></select>
 <div id="jobsBadge" style="display:none;margin-top:8px;padding:6px 8px;background:rgba(136,176,96,.12);border:1px solid var(--ac3);border-radius:6px;font-size:10px;color:var(--ac);cursor:pointer" onclick="sw('upload',document.querySelector('.sb-nav-item:nth-child(2)'))"><span id="jobsBadgeDot" style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--ac);margin-right:5px;animation:pulse 1.2s infinite"></span><span id="jobsBadgeTxt">1 job running</span></div>
+<div class="sb-attr">
+<span class="sb-attr-name">Security QA Automator</span> is open source software, by <a href="https://github.com/D3c3pt1c0nCyber" target="_blank">D3c3pt1c0nCyber</a>
+<a href="https://github.com/D3c3pt1c0nCyber/Security-Questionnaire-Automator" target="_blank" title="GitHub" style="margin-left:4px"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle;color:var(--tx3)"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.418 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.009-.868-.014-1.703-2.782.604-3.369-1.341-3.369-1.341-.454-1.154-1.11-1.461-1.11-1.461-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836a9.59 9.59 0 012.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.202 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.744 0 .267.18.579.688.481C19.138 20.163 22 16.418 22 12c0-5.523-4.477-10-10-10z"/></svg></a>
+<div class="sb-attr-ver">Version v2.0.0</div>
+</div>
 </div>
 </aside>
 <div class="mn">
