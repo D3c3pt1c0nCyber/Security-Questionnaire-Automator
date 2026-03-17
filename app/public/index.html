@@ -40,10 +40,12 @@ body::after{content:'';position:fixed;top:0;left:0;width:100%;height:100%;pointe
 @keyframes termBlink{0%,100%{opacity:1}50%{opacity:.4}}
 @keyframes termGlow{0%,100%{text-shadow:0 0 4px rgba(136,176,96,.25)}50%{text-shadow:0 0 8px rgba(136,176,96,.4),0 0 16px rgba(136,176,96,.15)}}
 
-.sb{width:var(--sw);background:rgba(8,11,8,.96);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);display:flex;flex-direction:column;border-right:1px solid rgba(136,176,96,.07);transition:width .3s cubic-bezier(.4,0,.2,1),transform .3s cubic-bezier(.4,0,.2,1);flex-shrink:0;z-index:10;overflow:hidden}
+.sb{width:var(--sw);background:rgba(8,11,8,.96);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);display:flex;flex-direction:column;border-right:1px solid rgba(136,176,96,.07);transition:width .3s cubic-bezier(.4,0,.2,1),transform .3s cubic-bezier(.4,0,.2,1);flex-shrink:0;z-index:10;overflow:hidden;position:relative}
 .sb.shut{width:0;border:none;transform:translateX(calc(var(--sw)*-1))}
 .sb-top{padding:8px 10px 8px;flex:1;overflow-y:auto;overflow-x:hidden}
 .sb-brand{display:flex;align-items:center;gap:8px;padding:10px 10px 8px;flex-shrink:0;border-bottom:1px solid var(--bd)}
+.sb-resize{position:absolute;top:0;right:0;width:5px;height:100%;cursor:col-resize;z-index:20;transition:background .15s}
+.sb-resize:hover,.sb-resize.dragging{background:rgba(136,176,96,.35)}
 .sb-logo{width:30px;height:30px;flex-shrink:0}
 
 .sb-brand-text{font-size:13px;font-weight:600;white-space:nowrap;letter-spacing:-.01em;color:var(--ac);text-shadow:0 0 6px rgba(136,176,96,.25)}
@@ -641,7 +643,7 @@ html.light .modal-box textarea:focus,html.light .modal-box select:focus{border-c
 </style>
 </head>
 <body>
-<aside class="sb" id="sb">
+<aside class="sb" id="sb"><div id="sbResize" class="sb-resize"></div>
 <div class="sb-brand"><img class="sb-logo" src="logo.png" alt="Logo"><div><div class="sb-brand-text">Security QA</div><div class="sb-brand-sub">Questionnaire Automator v2.0.0</div></div></div>
 <div class="sb-top">
 <div class="sb-nav">
@@ -1458,6 +1460,8 @@ function swTo(tab){const tabMap={chat:0,upload:1,import:2,migrate:3,calendar:4,a
 
 /* Auto-refresh bank stats every 30s */
 setInterval(refreshBankStats,30000);
+// Sidebar resize
+(function(){const SB_MIN=180,SB_MAX=480,handle=document.getElementById('sbResize');if(!handle)return;const saved=parseInt(localStorage.getItem('sq_sb_width'));if(saved&&saved>=SB_MIN&&saved<=SB_MAX){document.documentElement.style.setProperty('--sw',saved+'px')}handle.addEventListener('mousedown',e=>{e.preventDefault();handle.classList.add('dragging');document.body.style.cursor='col-resize';document.body.style.userSelect='none';const onMove=ev=>{const w=Math.min(SB_MAX,Math.max(SB_MIN,ev.clientX));document.documentElement.style.setProperty('--sw',w+'px')};const onUp=ev=>{const w=Math.min(SB_MAX,Math.max(SB_MIN,ev.clientX));document.documentElement.style.setProperty('--sw',w+'px');localStorage.setItem('sq_sb_width',w);handle.classList.remove('dragging');document.body.style.cursor='';document.body.style.userSelect='';document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp)};document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp)})})();
 </script>
 </body>
 </html>
