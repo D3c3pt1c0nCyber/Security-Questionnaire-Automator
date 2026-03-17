@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const helmet = require('helmet');
 const multer = require('multer');
 const XLSX = require('xlsx');
 const fs = require('fs');
@@ -445,11 +446,20 @@ setInterval(() => {
   }
 }, 60 * 60 * 1000);
 
-// Allow inline scripts/styles (single-file app)
-app.use((req, res, next) => {
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data:; connect-src 'self' https://api.anthropic.com; font-src 'self' https://fonts.gstatic.com");
-  next();
-});
+// Security headers via helmet (XSS, clickjacking, MIME sniffing, HSTS, etc.)
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      imgSrc: ["'self'", "data:"],
+      connectSrc: ["'self'", "https://api.anthropic.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+    },
+  },
+  crossOriginEmbedderPolicy: false, // Allow embedded resources
+}));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json({ limit: '50mb' }));
 
@@ -471,7 +481,7 @@ app.get('/api/auth-status', (req, res) => {
 });
 
 // Download endpoint (before auth — browser navigates directly, can't send headers)
-app.get('/api/download/:filename', (req, res) => {
+app.get('/api/download/:filename', requireAuth, (req, res) => {
   const safeFN = path.basename(req.params.filename);
   const filePath = path.join(OUTPUT_DIR, safeFN);
   if (fs.existsSync(filePath)) {

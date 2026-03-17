@@ -16,3 +16,7 @@ services:
         sync: false
       - key: ATLASSIAN_TOKEN
         sync: false
+      - key: APP_PASSWORD
+        sync: false
+      - key: JIRA_PROJECT
+        sync: false
