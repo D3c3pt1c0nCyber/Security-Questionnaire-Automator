@@ -1949,9 +1949,15 @@ app.post('/api/bank/import-file', (req, res) => {
       }
       case 'category':
       default: {
-        const pqDir = path.join(BANK_ROOT, 'past-questionnaires');
-        if (!fs.existsSync(pqDir)) fs.mkdirSync(pqDir, { recursive: true });
-        targetPath = path.join(pqDir, `${today}-${fileName}`);
+        if (product) {
+          const prodQDir = path.join(BANK_ROOT, 'products', product, 'questionnaires');
+          if (!fs.existsSync(prodQDir)) fs.mkdirSync(prodQDir, { recursive: true });
+          targetPath = path.join(prodQDir, `${today}-${fileName}`);
+        } else {
+          const pqDir = path.join(BANK_ROOT, 'past-questionnaires');
+          if (!fs.existsSync(pqDir)) fs.mkdirSync(pqDir, { recursive: true });
+          targetPath = path.join(pqDir, `${today}-${fileName}`);
+        }
         break;
       }
     }
