@@ -1,22 +1,34 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 220">
   <defs>
-    <linearGradient id="g1" x1="0%" y1="100%" x2="100%" y2="0%">
-      <stop offset="0%" style="stop-color:#0a4a8a"/>
-      <stop offset="50%" style="stop-color:#1a8fd4"/>
-      <stop offset="75%" style="stop-color:#2ec4a0"/>
-      <stop offset="100%" style="stop-color:#7ed321"/>
+    <linearGradient id="gA" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#1a5fb4"/>
+      <stop offset="40%" stop-color="#2196c8"/>
+      <stop offset="70%" stop-color="#26c0a0"/>
+      <stop offset="100%" stop-color="#88d840"/>
+    </linearGradient>
+    <linearGradient id="gB" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#26c0a0"/>
+      <stop offset="100%" stop-color="#b8e840"/>
     </linearGradient>
   </defs>
-  <!-- Bottom-left pieces -->
-  <rect x="15" y="140" width="22" height="22" rx="5" fill="#0a4a8a" transform="rotate(-30 26 151)"/>
-  <rect x="42" y="125" width="22" height="22" rx="5" fill="#0d5a9e" transform="rotate(-30 53 136)"/>
-  <!-- Middle pieces -->
-  <rect x="55" y="98" width="28" height="28" rx="6" fill="#1070b8" transform="rotate(-30 69 112)"/>
-  <rect x="78" y="108" width="28" height="28" rx="6" fill="#1580c8" transform="rotate(-30 92 122)"/>
-  <!-- Upper-middle pieces -->
-  <rect x="95" y="72" width="32" height="32" rx="6" fill="#1a90d4" transform="rotate(-30 111 88)"/>
-  <rect x="118" y="80" width="32" height="32" rx="6" fill="#20a0d8" transform="rotate(-30 134 96)"/>
-  <!-- Top pieces -->
-  <rect x="135" y="42" width="28" height="28" rx="5" fill="#30c4b0" transform="rotate(-30 149 56)"/>
-  <rect x="155" y="22" width="24" height="24" rx="4" fill="#7ed321" transform="rotate(-30 167 34)"/>
+
+  <!-- Bottom-left small dots (row 1) -->
+  <rect x="10" y="150" width="20" height="20" rx="5" fill="url(#gA)" transform="rotate(-38 20 160)"/>
+  <rect x="32" y="163" width="20" height="20" rx="5" fill="url(#gA)" transform="rotate(-38 42 173)"/>
+
+  <!-- Row 2 small -->
+  <rect x="38" y="122" width="26" height="26" rx="6" fill="url(#gA)" transform="rotate(-38 51 135)"/>
+  <rect x="62" y="136" width="26" height="26" rx="6" fill="url(#gA)" transform="rotate(-38 75 149)"/>
+
+  <!-- Row 3 medium -->
+  <rect x="72" y="88" width="36" height="36" rx="7" fill="url(#gA)" transform="rotate(-38 90 106)"/>
+  <rect x="102" y="104" width="36" height="36" rx="7" fill="url(#gA)" transform="rotate(-38 120 122)"/>
+
+  <!-- Row 4 large -->
+  <rect x="112" y="50" width="42" height="42" rx="8" fill="url(#gA)" transform="rotate(-38 133 71)"/>
+  <rect x="146" y="66" width="42" height="42" rx="8" fill="url(#gA)" transform="rotate(-38 167 87)"/>
+
+  <!-- Tip blades -->
+  <rect x="150" y="18" width="13" height="50" rx="6" fill="url(#gB)" transform="rotate(-38 156 43)"/>
+  <rect x="170" y="5"  width="10" height="40" rx="5" fill="url(#gB)" transform="rotate(-38 175 25)"/>
 </svg>
