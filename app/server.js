@@ -11,8 +11,8 @@ const AdmZip = require('adm-zip');
 const pdfParse = require('pdf-parse');
 
 // Model constants
-const MODEL_OPUS = 'claude-opus-4-20250514';
-const MODEL_SONNET = 'claude-sonnet-4-20250514';
+const MODEL_OPUS = 'claude-opus-4-6';
+const MODEL_SONNET = 'claude-sonnet-4-6';
 const MODEL_HAIKU = 'claude-haiku-4-5-20251001';
 
 const app = express();
@@ -24,6 +24,17 @@ const SERVER_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const BANK_ROOT = path.resolve(__dirname, '..', 'data', 'answer-bank');
 const OUTPUT_DIR = path.resolve(__dirname, '..', 'data', 'output');
 const UPLOAD_DIR = path.resolve(__dirname, 'uploads');
+const LOGS_FILE = path.resolve(__dirname, '..', 'data', 'activity-logs.json');
+
+// Activity log
+let activityLogs = [];
+try { if (fs.existsSync(LOGS_FILE)) activityLogs = JSON.parse(fs.readFileSync(LOGS_FILE, 'utf-8')); } catch {}
+function logActivity(type, action, details = {}, req = null) {
+  const entry = { id: `${Date.now()}-${Math.random().toString(36).slice(2,7)}`, timestamp: new Date().toISOString(), type, action, ip: req ? (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '') : '', ...details };
+  activityLogs.unshift(entry);
+  if (activityLogs.length > 10000) activityLogs = activityLogs.slice(0, 10000);
+  fs.writeFile(LOGS_FILE, JSON.stringify(activityLogs), () => {});
+}
 
 // Ensure directories exist (needed for cloud deployment)
 for (const dir of [
@@ -458,10 +469,12 @@ app.post('/api/login', apiLimiter, (req, res) => {
   if (!APP_PASSWORD) return res.json({ success: true, token: null, message: 'No password required' });
   const { password } = req.body;
   if (!password || password !== APP_PASSWORD) {
+    logActivity('auth', 'Login failed', { status: 'failed' }, req);
     return res.status(401).json({ error: 'Invalid password' });
   }
   const token = generateSessionToken();
   activeSessions.set(token, { created: Date.now() });
+  logActivity('auth', 'Login successful', { status: 'success' }, req);
   res.json({ success: true, token });
 });
 
@@ -475,6 +488,7 @@ app.get('/api/download/:filename', requireAuth, (req, res) => {
   const safeFN = path.basename(req.params.filename);
   const filePath = path.join(OUTPUT_DIR, safeFN);
   if (fs.existsSync(filePath)) {
+    logActivity('download', 'File downloaded', { file: safeFN, status: 'success' }, req);
     res.download(filePath);
   } else {
     res.status(404).json({ error: 'File not found' });
@@ -918,6 +932,7 @@ app.post('/api/upload', uploadLimiter, upload.single('file'), async (req, res) =
 
   try {
     const parsed = await parseUploadedFile(req.file.path, req.file.originalname);
+    logActivity('upload', 'File uploaded', { file: req.file.originalname, size: req.file.size, status: 'success' }, req);
     res.json({
       fileName: req.file.originalname,
       filePath: req.file.path,
@@ -961,6 +976,8 @@ app.post('/api/chat', aiLimiter, async (req, res) => {
   const apiKey = clientKey || SERVER_API_KEY;
 
   if (!apiKey) return res.status(400).json({ error: 'Anthropic API key required' });
+  const lastMsg = messages && messages.length ? messages[messages.length - 1]?.content : '';
+  logActivity('chat', 'Chat message', { preview: String(lastMsg).slice(0, 120), model: model || 'default', product: product || 'all', status: 'sent' }, req);
 
   // Set SSE headers for streaming
   res.setHeader('Content-Type', 'text/event-stream');
@@ -1250,6 +1267,35 @@ app.delete('/api/jobs', (req, res) => {
   res.json({ cleared: true });
 });
 
+// --- Activity Logs ---
+app.get('/api/activity-logs', requireAuth, (req, res) => {
+  const { type, search, limit = 500, offset = 0 } = req.query;
+  let logs = activityLogs;
+  if (type && type !== 'all') logs = logs.filter(l => l.type === type);
+  if (search) { const q = search.toLowerCase(); logs = logs.filter(l => JSON.stringify(l).toLowerCase().includes(q)); }
+  res.json({ logs: logs.slice(Number(offset), Number(offset) + Number(limit)), total: logs.length });
+});
+
+app.get('/api/activity-logs/export', requireAuth, (req, res) => {
+  const { type, search } = req.query;
+  let logs = activityLogs;
+  if (type && type !== 'all') logs = logs.filter(l => l.type === type);
+  if (search) { const q = search.toLowerCase(); logs = logs.filter(l => JSON.stringify(l).toLowerCase().includes(q)); }
+  const headers = ['Timestamp', 'Type', 'Action', 'IP', 'Status', 'Details'];
+  const rows = logs.map(l => [l.timestamp, l.type || '', l.action || '', l.ip || '', l.status || '', JSON.stringify({ ...l, timestamp: undefined, type: undefined, action: undefined, ip: undefined, status: undefined, id: undefined })].map(v => `"${String(v||'').replace(/"/g,'""')}"`).join(','));
+  const csv = [headers.join(','), ...rows].join('\n');
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', `attachment; filename="activity-logs-${new Date().toISOString().slice(0,10)}.csv"`);
+  res.send(csv);
+});
+
+app.delete('/api/activity-logs', requireAuth, (req, res) => {
+  activityLogs = [];
+  fs.writeFile(LOGS_FILE, '[]', () => {});
+  logActivity('admin', 'Activity logs cleared', { status: 'success' }, req);
+  res.json({ success: true });
+});
+
 async function runBatchJob(job, { filePath, fileType, sheetName, questionColumn, idColumn, responseColumn, yesNoColumn, product, apiKey }) {
   try {
     const ext = (fileType || '.xlsx').toLowerCase();
@@ -1414,8 +1460,12 @@ async function runBatchJob(job, { filePath, fileType, sheetName, questionColumn,
         crossProduct: crossProduct.length, answers: allAnswers
       }
     });
+    logActivity('batch', 'Batch job completed', { jobId: job.id, total: questions.length, status: 'success' });
   } catch (err) {
-    jobUpdate(job, { status: 'error', error: err.message });
+    const msg = err?.message || err?.toString() || 'Unknown error';
+    console.error('[runBatchJob error]', msg, err?.stack);
+    logActivity('batch', 'Batch job failed', { jobId: job.id, error: msg, status: 'error' });
+    jobUpdate(job, { status: 'error', error: msg });
   }
 }
 
@@ -1428,6 +1478,7 @@ app.post('/api/process', aiLimiter, (req, res) => {
   try { filePath = assertPathWithin(rawFilePath, UPLOAD_DIR); }
   catch { return res.status(403).json({ error: 'Invalid file path' }); }
   const job = createJob('batch', { fileName: path.basename(filePath), product: product || '' });
+  logActivity('batch', 'Batch job started', { file: path.basename(filePath), product: product || 'all', jobId: job.id, status: 'started' }, req);
   res.json({ jobId: job.id });
   runBatchJob(job, { filePath, fileType, sheetName, questionColumn, idColumn, responseColumn, yesNoColumn, product, apiKey });
 });
@@ -2778,7 +2829,7 @@ Respond ONLY with the JSON array, no other text.`;
         try {
           const response = JSON.parse(data);
           if (response.error) {
-            reject(new Error(response.error.message || 'Claude API error'));
+            reject(new Error(`Claude API error (${response.error.type || 'unknown'}): ${response.error.message || JSON.stringify(response.error)}`));
             return;
           }
           const text = response.content?.map(c => c.text || '').join('') || '';
