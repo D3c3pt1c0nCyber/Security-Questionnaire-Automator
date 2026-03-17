@@ -456,9 +456,9 @@ setInterval(() => {
   }
 }, 60 * 60 * 1000);
 
-// CSP: external files only (no unsafe-inline)
+// CSP: external scripts only; inline styles allowed for JS-driven dynamic styling
 app.use((req, res, next) => {
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; img-src 'self' data:; connect-src 'self' https://api.anthropic.com; font-src 'self' https://fonts.gstatic.com");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data:; connect-src 'self' https://api.anthropic.com; font-src 'self' https://fonts.gstatic.com");
   next();
 });
 app.use(express.static(path.join(__dirname, 'public')));
