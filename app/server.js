@@ -1142,7 +1142,7 @@ ${jiraContext}
 ${fileContext}`;
 
     const selectedModel = model || MODEL_OPUS;
-    const maxTok = selectedModel.includes('haiku') ? 8192 : selectedModel.includes('opus') ? 32000 : 50000;
+    const maxTok = 8192;
     const body = JSON.stringify({
       model: selectedModel,
       max_tokens: maxTok,
@@ -2327,7 +2327,7 @@ Respond ONLY with the JSON array.`;
 
     const body = JSON.stringify({
       model: MODEL_SONNET,
-      max_tokens: 32000,
+      max_tokens: 8192,
       messages: [{ role: 'user', content: prompt }]
     });
 
@@ -2439,7 +2439,7 @@ Respond ONLY with the JSON array.`;
 
     const body = JSON.stringify({
       model: MODEL_SONNET,
-      max_tokens: 50000,
+      max_tokens: 8192,
       messages: [{ role: 'user', content: prompt }]
     });
 
@@ -2806,7 +2806,7 @@ Respond ONLY with the JSON array, no other text.`;
 
     const body = JSON.stringify({
       model: MODEL_OPUS,
-      max_tokens: 32000,
+      max_tokens: 8192,
       messages: [{ role: 'user', content: prompt }]
     });
 
