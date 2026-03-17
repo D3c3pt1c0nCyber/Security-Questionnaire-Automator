@@ -1,0 +1,12 @@
+version: 2
+updates:
+  # Node.js dependencies in /app
+  - package-ecosystem: "npm"
+    directory: "/app"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "security"
