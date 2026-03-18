@@ -66,12 +66,22 @@ function verifyPassword(password, salt, hash) {
 }
 
 // Load users; bootstrap default admin from APP_PASSWORD if store is empty
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
 (function loadUsers() {
   try { if (fs.existsSync(USERS_FILE)) _users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf-8')); } catch {}
   if (_users.length === 0 && APP_PASSWORD) {
     const salt = crypto.randomBytes(32).toString('hex');
-    _users = [{ id: crypto.randomBytes(16).toString('hex'), username: 'admin', passwordHash: hashPassword(APP_PASSWORD, salt), salt, role: 'admin', canAccessAdmin: true, createdAt: new Date().toISOString(), createdBy: 'system' }];
+    _users = [{ id: crypto.randomBytes(16).toString('hex'), username: ADMIN_USERNAME, passwordHash: hashPassword(APP_PASSWORD, salt), salt, role: 'admin', canAccessAdmin: true, createdAt: new Date().toISOString(), createdBy: 'system' }];
     saveUsers();
+    console.log(`[users] Created default admin: ${ADMIN_USERNAME}`);
+  } else {
+    // One-time migration: rename legacy 'admin' user to ADMIN_USERNAME if different
+    const legacy = _users.find(u => u.username === 'admin');
+    if (legacy && ADMIN_USERNAME !== 'admin' && !_users.find(u => u.username === ADMIN_USERNAME)) {
+      legacy.username = ADMIN_USERNAME;
+      saveUsers();
+      console.log(`[users] Renamed 'admin' → '${ADMIN_USERNAME}'`);
+    }
   }
 })();
 
