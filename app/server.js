@@ -20,6 +20,7 @@ const app = express();
 app.set('trust proxy', 1); // Trust first proxy (Render, Heroku, etc.)
 const PORT = process.env.PORT || 3456;
 const SERVER_API_KEY = process.env.ANTHROPIC_API_KEY || '';
+const APP_PASSWORD = process.env.APP_PASSWORD || '';
 
 // Enforce APP_PASSWORD in production
 if (process.env.NODE_ENV === 'production' && !process.env.APP_PASSWORD) {
@@ -479,8 +480,7 @@ const uploadLimiter = rateLimit({
   message: { error: 'Too many uploads, please try again later' }
 });
 
-// Optional basic authentication (set APP_PASSWORD in .env to enable)
-const APP_PASSWORD = process.env.APP_PASSWORD || '';
+// Session store
 const activeSessions = new Map();
 
 function generateSessionToken() {
