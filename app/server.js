@@ -22,10 +22,9 @@ const PORT = process.env.PORT || 3456;
 const SERVER_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const APP_PASSWORD = process.env.APP_PASSWORD || '';
 
-// Enforce APP_PASSWORD in production
+// Warn if APP_PASSWORD not set (only required for bootstrapping the first admin)
 if (process.env.NODE_ENV === 'production' && !process.env.APP_PASSWORD) {
-  console.error('[FATAL] APP_PASSWORD must be set in production. Refusing to start.');
-  process.exit(1);
+  console.warn('[WARN] APP_PASSWORD is not set. If no users exist, login will be unavailable until an admin is created.');
 }
 
 // Allowlist for Atlassian SSRF protection
