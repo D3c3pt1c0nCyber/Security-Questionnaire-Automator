@@ -129,6 +129,7 @@
 <button class="admin-tab" data-tab="status">Status</button>
 <button class="admin-tab" data-tab="bank">Answer Bank</button>
 <button class="admin-tab" data-tab="logs">Activity Logs</button>
+<button class="admin-tab admin-tab-users" data-tab="users" style="display:none">Users</button>
 </div>
 
 <!-- Authentication Tab -->
@@ -265,6 +266,76 @@
 </div>
 </div>
 
+<!-- Users Tab -->
+<div class="admin-section" id="adminUsers">
+<div class="bc admin-card">
+<h2 style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--ac2)" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+User Management
+</h2>
+<p class="admin-desc">Create users and control their access permissions.</p>
+
+<!-- Create user form -->
+<div style="background:var(--bg2);border:1px solid var(--bd);border-radius:8px;padding:14px;margin-bottom:16px">
+<div style="font-size:12px;font-weight:600;color:var(--tx2);margin-bottom:10px">Create New User</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+<div><label style="font-size:11px;color:var(--tx3);display:block;margin-bottom:3px">Username</label><input class="bsl" type="text" id="newUsername" placeholder="e.g. johndoe" autocapitalize="none" style="width:100%;box-sizing:border-box"></div>
+<div><label style="font-size:11px;color:var(--tx3);display:block;margin-bottom:3px">Password (min 8 chars)</label><input class="bsl" type="password" id="newPassword" placeholder="••••••••" style="width:100%;box-sizing:border-box"></div>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+<div><label style="font-size:11px;color:var(--tx3);display:block;margin-bottom:3px">Role</label>
+<select class="bsl" id="newRole" style="width:100%;box-sizing:border-box">
+<option value="user">User</option>
+<option value="admin">Admin</option>
+</select></div>
+<div style="display:flex;flex-direction:column;justify-content:flex-end;padding-bottom:2px">
+<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--tx2);cursor:pointer">
+<input type="checkbox" id="newCanAdmin"> Can access Admin tab
+</label>
+</div>
+</div>
+<button class="bb" id="createUserBtn" style="font-size:12px;padding:6px 16px">Create User</button>
+<div id="createUserResult" style="display:none;margin-top:8px;font-size:12px;padding:6px 10px;border-radius:5px"></div>
+</div>
+
+<!-- Users table -->
+<div id="usersTableWrap" class="tw" style="max-height:400px;overflow-y:auto">
+<table id="usersTable">
+<thead><tr>
+<th>Username</th><th style="width:80px">Role</th><th style="width:110px">Admin Tab</th><th style="width:90px">Created</th><th style="width:140px">Actions</th>
+</tr></thead>
+<tbody id="usersBody"><tr><td colspan="5" style="text-align:center;color:var(--tx3)">Loading...</td></tr></tbody>
+</table>
+</div>
+</div>
+
+<!-- Edit user modal -->
+<div id="editUserModal" style="display:none;position:fixed;inset:0;background:#0009;z-index:900;align-items:center;justify-content:center">
+<div style="background:var(--bg);border:1px solid var(--bd);border-radius:10px;padding:22px;width:360px;max-width:90vw">
+<h3 style="margin:0 0 14px;font-size:14px">Edit User: <span id="editUserName" style="color:var(--ac)"></span></h3>
+<input type="hidden" id="editUserId">
+<div style="margin-bottom:10px"><label style="font-size:11px;color:var(--tx3);display:block;margin-bottom:3px">Role</label>
+<select class="bsl" id="editRole" style="width:100%">
+<option value="user">User</option>
+<option value="admin">Admin</option>
+</select></div>
+<div style="margin-bottom:10px">
+<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--tx2);cursor:pointer">
+<input type="checkbox" id="editCanAdmin"> Can access Admin tab
+</label>
+<div style="font-size:10px;color:var(--tx3);margin-top:4px">Admins always have admin access.</div>
+</div>
+<div style="margin-bottom:14px"><label style="font-size:11px;color:var(--tx3);display:block;margin-bottom:3px">New Password (leave blank to keep current)</label>
+<input class="bsl" type="password" id="editPassword" placeholder="••••••••" style="width:100%;box-sizing:border-box"></div>
+<div style="display:flex;gap:8px;justify-content:flex-end">
+<button class="bb sec" id="editUserCancelBtn" style="font-size:12px">Cancel</button>
+<button class="bb" id="editUserSaveBtn" style="font-size:12px">Save Changes</button>
+</div>
+<div id="editUserResult" style="display:none;margin-top:8px;font-size:12px;padding:6px 10px;border-radius:5px"></div>
+</div>
+</div>
+</div>
+
 </div></div>
 
 <!-- Save to Bank modal -->
@@ -291,6 +362,10 @@
 <div id="loginOverlay"><div class="login-card">
 <div class="login-logo"><img src="logo.png" alt="Logo"></div>
 <p class="login-sub">Authenticate to access the dashboard</p>
+<div class="login-field">
+<label for="loginUsername">Username</label>
+<input type="text" id="loginUsername" placeholder="Enter your username" autocomplete="username" autocapitalize="none">
+</div>
 <div class="login-field">
 <label for="loginPassword">Password</label>
 <input type="password" id="loginPassword" placeholder="Enter your password" autocomplete="current-password">

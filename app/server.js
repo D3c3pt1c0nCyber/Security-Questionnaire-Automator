@@ -35,6 +35,7 @@ const BANK_ROOT = path.resolve(__dirname, 'data', 'answer-bank');
 const OUTPUT_DIR = path.resolve(__dirname, 'data', 'output');
 const UPLOAD_DIR = path.resolve(__dirname, 'uploads');
 const LOGS_FILE = path.resolve(__dirname, 'data', 'activity-logs.json');
+const USERS_FILE = path.resolve(__dirname, 'data', 'users.json');
 
 // Activity log
 let activityLogs = [];
@@ -45,6 +46,34 @@ function logActivity(type, action, details = {}, req = null) {
   if (activityLogs.length > 10000) activityLogs = activityLogs.slice(0, 10000);
   fs.writeFile(LOGS_FILE, JSON.stringify(activityLogs), () => {});
 }
+
+// --- Users store ---
+let _users = [];
+
+function saveUsers() {
+  fs.writeFile(USERS_FILE, JSON.stringify(_users, null, 2), () => {});
+}
+
+function hashPassword(password, salt) {
+  return crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha512').toString('hex');
+}
+
+function verifyPassword(password, salt, hash) {
+  return crypto.timingSafeEqual(
+    Buffer.from(hashPassword(password, salt), 'hex'),
+    Buffer.from(hash, 'hex')
+  );
+}
+
+// Load users; bootstrap default admin from APP_PASSWORD if store is empty
+(function loadUsers() {
+  try { if (fs.existsSync(USERS_FILE)) _users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf-8')); } catch {}
+  if (_users.length === 0 && APP_PASSWORD) {
+    const salt = crypto.randomBytes(32).toString('hex');
+    _users = [{ id: crypto.randomBytes(16).toString('hex'), username: 'admin', passwordHash: hashPassword(APP_PASSWORD, salt), salt, role: 'admin', canAccessAdmin: true, createdAt: new Date().toISOString(), createdBy: 'system' }];
+    saveUsers();
+  }
+})();
 
 // Ensure directories exist (needed for cloud deployment)
 for (const dir of [
@@ -442,20 +471,23 @@ function generateSessionToken() {
 }
 
 function requireAuth(req, res, next) {
-  // If no password is set, skip auth (local development)
   if (!APP_PASSWORD) return next();
-
-  // Check session token in header
   const token = req.headers['x-session-token'];
   if (token && activeSessions.has(token)) {
     const session = activeSessions.get(token);
-    if (Date.now() - session.created < 24 * 60 * 60 * 1000) { // 24h expiry
+    if (Date.now() - session.created < 24 * 60 * 60 * 1000) {
+      req.user = session; // attach { username, role, canAccessAdmin }
       return next();
     }
     activeSessions.delete(token);
   }
-
   return res.status(401).json({ error: 'Authentication required' });
+}
+
+function requireAdmin(req, res, next) {
+  if (!APP_PASSWORD) return next();
+  if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
+  next();
 }
 
 // Clean up expired sessions every hour
@@ -491,18 +523,90 @@ const loginLimiter = rateLimit({
   message: { error: 'Too many login attempts, please try again later' }
 });
 
-// Login endpoint (only active when APP_PASSWORD is set)
+// Login endpoint
 app.post('/api/login', loginLimiter, (req, res) => {
-  if (!APP_PASSWORD) return res.json({ success: true, token: null, message: 'No password required' });
-  const { password } = req.body;
-  if (!password || password !== APP_PASSWORD) {
-    logActivity('auth', 'Login failed', { status: 'failed' }, req);
-    return res.status(401).json({ error: 'Invalid password' });
+  if (!APP_PASSWORD) return res.json({ success: true, token: null, username: 'guest', role: 'admin', canAccessAdmin: true });
+  const { username, password } = req.body;
+  if (!username || !password) return res.status(400).json({ error: 'Username and password are required' });
+  const user = _users.find(u => u.username.toLowerCase() === username.toLowerCase());
+  if (!user) {
+    logActivity('auth', 'Login failed', { username, status: 'failed', reason: 'unknown user' }, req);
+    return res.status(401).json({ error: 'Invalid username or password' });
+  }
+  let valid = false;
+  try { valid = verifyPassword(password, user.salt, user.passwordHash); } catch {}
+  if (!valid) {
+    logActivity('auth', 'Login failed', { username, status: 'failed', reason: 'wrong password' }, req);
+    return res.status(401).json({ error: 'Invalid username or password' });
   }
   const token = generateSessionToken();
-  activeSessions.set(token, { created: Date.now() });
-  logActivity('auth', 'Login successful', { status: 'success' }, req);
-  res.json({ success: true, token });
+  activeSessions.set(token, { created: Date.now(), username: user.username, role: user.role, canAccessAdmin: user.canAccessAdmin });
+  logActivity('auth', 'Login successful', { username: user.username, role: user.role, status: 'success' }, req);
+  res.json({ success: true, token, username: user.username, role: user.role, canAccessAdmin: user.canAccessAdmin });
+});
+
+// Logout endpoint
+app.post('/api/logout', (req, res) => {
+  const token = req.headers['x-session-token'];
+  if (token) activeSessions.delete(token);
+  res.json({ success: true });
+});
+
+// Current user info
+app.get('/api/me', requireAuth, (req, res) => {
+  if (!req.user) return res.json({ username: 'guest', role: 'admin', canAccessAdmin: true });
+  res.json({ username: req.user.username, role: req.user.role, canAccessAdmin: req.user.canAccessAdmin });
+});
+
+// --- User management (admin only) ---
+app.get('/api/users', requireAdmin, (_req, res) => {
+  res.json(_users.map(u => ({ id: u.id, username: u.username, role: u.role, canAccessAdmin: u.canAccessAdmin, createdAt: u.createdAt, createdBy: u.createdBy })));
+});
+
+app.post('/api/users', requireAdmin, (req, res) => {
+  const { username, password, role = 'user', canAccessAdmin = false } = req.body;
+  if (!username || !username.trim()) return res.status(400).json({ error: 'Username is required' });
+  if (!password || password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+  const cleanName = username.trim().toLowerCase();
+  if (_users.find(u => u.username.toLowerCase() === cleanName)) return res.status(409).json({ error: 'Username already exists' });
+  const salt = crypto.randomBytes(32).toString('hex');
+  const newUser = { id: crypto.randomBytes(16).toString('hex'), username: username.trim(), passwordHash: hashPassword(password, salt), salt, role: role === 'admin' ? 'admin' : 'user', canAccessAdmin: role === 'admin' ? true : !!canAccessAdmin, createdAt: new Date().toISOString(), createdBy: req.user?.username || 'admin' };
+  _users.push(newUser);
+  saveUsers();
+  logActivity('admin', 'User created', { target: newUser.username, role: newUser.role, status: 'success' }, req);
+  res.json({ success: true, user: { id: newUser.id, username: newUser.username, role: newUser.role, canAccessAdmin: newUser.canAccessAdmin } });
+});
+
+app.put('/api/users/:id', requireAdmin, (req, res) => {
+  const user = _users.find(u => u.id === req.params.id);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  // Prevent admin from removing their own admin role
+  if (req.user?.username === user.username && req.body.role && req.body.role !== 'admin') {
+    return res.status(400).json({ error: 'You cannot remove your own admin role' });
+  }
+  const { role, canAccessAdmin, password } = req.body;
+  if (role !== undefined) { user.role = role === 'admin' ? 'admin' : 'user'; user.canAccessAdmin = user.role === 'admin' ? true : user.canAccessAdmin; }
+  if (canAccessAdmin !== undefined && user.role !== 'admin') user.canAccessAdmin = !!canAccessAdmin;
+  if (password) {
+    if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    user.salt = crypto.randomBytes(32).toString('hex');
+    user.passwordHash = hashPassword(password, user.salt);
+  }
+  saveUsers();
+  logActivity('admin', 'User updated', { target: user.username, role: user.role, status: 'success' }, req);
+  res.json({ success: true, user: { id: user.id, username: user.username, role: user.role, canAccessAdmin: user.canAccessAdmin } });
+});
+
+app.delete('/api/users/:id', requireAdmin, (req, res) => {
+  const idx = _users.findIndex(u => u.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'User not found' });
+  if (req.user?.username === _users[idx].username) return res.status(400).json({ error: 'You cannot delete your own account' });
+  const admins = _users.filter(u => u.role === 'admin');
+  if (admins.length === 1 && _users[idx].role === 'admin') return res.status(400).json({ error: 'Cannot delete the last admin account' });
+  const deleted = _users.splice(idx, 1)[0];
+  saveUsers();
+  logActivity('admin', 'User deleted', { target: deleted.username, status: 'success' }, req);
+  res.json({ success: true });
 });
 
 // Check if auth is required

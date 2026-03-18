@@ -1,6 +1,7 @@
 
 // Authentication gate
 let _sessionToken = localStorage.getItem('sq_session_token') || null;
+let _currentUser = null; // { username, role, canAccessAdmin }
 
 function authHeaders(headers = {}) {
   if (_sessionToken) headers['X-Session-Token'] = _sessionToken;
@@ -28,7 +29,7 @@ function showLogin() {
   document.getElementById('loginOverlay').style.display = 'flex';
   document.querySelector('.sb').style.visibility = 'hidden';
   document.querySelector('.mn').style.visibility = 'hidden';
-  setTimeout(() => document.getElementById('loginPassword').focus(), 100);
+  setTimeout(() => document.getElementById('loginUsername').focus(), 100);
 }
 
 function hideLogin() {
@@ -37,7 +38,18 @@ function hideLogin() {
   document.querySelector('.mn').style.visibility = '';
 }
 
+function applyUserPermissions(user) {
+  _currentUser = user;
+  // Admin nav tab — hide if user cannot access it
+  const adminNavItem = document.querySelectorAll('.sb-nav-item')[5];
+  if (adminNavItem) adminNavItem.style.display = user && user.canAccessAdmin === false ? 'none' : '';
+  // Users sub-tab — only visible to admins
+  const usersTab = document.querySelector('.admin-tab-users');
+  if (usersTab) usersTab.style.display = user && user.role === 'admin' ? '' : 'none';
+}
+
 async function doLogin() {
+  const username = document.getElementById('loginUsername').value.trim();
   const pw = document.getElementById('loginPassword').value;
   const errEl = document.getElementById('loginError');
   const btn = document.getElementById('loginBtn');
@@ -45,15 +57,16 @@ async function doLogin() {
   btn.disabled = true;
   btn.textContent = 'Signing in...';
   try {
-    const r = await _origFetch('/api/login', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
+    const r = await _origFetch('/api/login', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username, password:pw})});
     const d = await r.json();
     if (d.success) {
       _sessionToken = d.token;
       if (d.token) localStorage.setItem('sq_session_token', d.token);
+      applyUserPermissions({ username: d.username, role: d.role, canAccessAdmin: d.canAccessAdmin });
       hideLogin();
       _resetIdle();
     } else {
-      errEl.textContent = d.error || 'Invalid password';
+      errEl.textContent = d.error || 'Invalid username or password';
       errEl.style.display = 'block';
       document.getElementById('loginPassword').select();
     }
@@ -72,11 +85,15 @@ let _idleTimer = null, _idleWarnTimer = null;
 
 function _doLogout() {
   clearTimeout(_idleTimer); clearTimeout(_idleWarnTimer);
+  if (_sessionToken) _origFetch('/api/logout', {method:'POST',headers:{'X-Session-Token':_sessionToken}}).catch(()=>{});
   _sessionToken = null;
+  _currentUser = null;
   localStorage.removeItem('sq_session_token');
   const w = document.getElementById('idleWarn');
   if (w) w.style.display = 'none';
+  document.getElementById('loginUsername').value = '';
   document.getElementById('loginPassword').value = '';
+  applyUserPermissions(null);
   showLogin();
 }
 
@@ -102,22 +119,24 @@ window._hasServerApiKey = false;
   try {
     const r = await _origFetch('/api/auth-status');
     const d = await r.json();
-    window._hasServerApiKey = !!d.hasServerApiKey;
     if (d.required) {
       if (_sessionToken) {
-        const t = await _origFetch('/api/products', {headers:{'X-Session-Token':_sessionToken}});
+        const t = await _origFetch('/api/me', {headers:{'X-Session-Token':_sessionToken}});
         if (t.status === 401) {
           localStorage.removeItem('sq_session_token');
           _sessionToken = null;
           showLogin();
         } else {
-          _resetIdle(); // already authenticated — start idle timer
+          const u = await t.json();
+          applyUserPermissions(u);
+          _resetIdle();
         }
       } else {
         showLogin();
       }
     } else {
-      _resetIdle(); // no auth required but start tracking anyway
+      applyUserPermissions({ username: 'guest', role: 'admin', canAccessAdmin: true });
+      _resetIdle();
     }
   } catch(e) { /* no auth check possible, continue */ }
 
@@ -616,12 +635,111 @@ else{res.className='save-res err';res.textContent=d.error||'Failed'}}catch(e){co
 function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
 
 // --- Admin Settings ---
-function swAdminTab(tab,btn){document.querySelectorAll('.admin-tab').forEach(b=>b.classList.remove('on'));btn.classList.add('on');document.querySelectorAll('.admin-section').forEach(s=>s.classList.remove('on'));document.getElementById({knowledge:'adminKnowledge',status:'adminStatus',bank:'adminBank',quality:'adminQuality',products:'adminProducts',frameworks:'adminFrameworks',logs:'adminLogs'}[tab]).classList.add('on');if(tab==='products')renderProductList();if(tab==='frameworks')renderFWList();if(tab==='status')checkSystemStatus();if(tab==='bank')refreshBankStats();if(tab==='logs')loadLogs()}
+function swAdminTab(tab,btn){document.querySelectorAll('.admin-tab').forEach(b=>b.classList.remove('on'));btn.classList.add('on');document.querySelectorAll('.admin-section').forEach(s=>s.classList.remove('on'));const sectionId={knowledge:'adminKnowledge',status:'adminStatus',bank:'adminBank',quality:'adminQuality',products:'adminProducts',frameworks:'adminFrameworks',logs:'adminLogs',users:'adminUsers'}[tab];if(sectionId){const el=document.getElementById(sectionId);if(el)el.classList.add('on')}if(tab==='products')renderProductList();if(tab==='frameworks')renderFWList();if(tab==='status')checkSystemStatus();if(tab==='bank')refreshBankStats();if(tab==='logs')loadLogs();if(tab==='users')loadUsers()}
 const _logTypeCls={auth:'badge',chat:'badge',batch:'badge',upload:'badge',download:'badge',bank:'badge',admin:'badge'};
 const _logTypeColor={auth:'#5ba8e6',chat:'var(--ac)',batch:'var(--yl)',upload:'#8b6ed4',download:'#5ba8e6',bank:'var(--gn)',admin:'var(--rd)'};
 async function loadLogs(){const type=document.getElementById('logTypeFilter')?.value||'all';const search=document.getElementById('logSearch')?.value||'';try{const r=await fetch(`/api/activity-logs?type=${encodeURIComponent(type)}&search=${encodeURIComponent(search)}&limit=500`);const d=await r.json();const cnt=document.getElementById('logCount');if(cnt)cnt.textContent=`Showing ${d.logs.length} of ${d.total} entries`;const tb=document.getElementById('logsBody');if(!tb)return;if(!d.logs.length){tb.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--tx3)">No logs found</td></tr>';return}tb.innerHTML=d.logs.map(l=>{const t=new Date(l.timestamp).toLocaleString();const col=_logTypeColor[l.type]||'var(--tx3)';const sc=l.status==='error'||l.status==='failed'?'var(--rd)':l.status==='success'?'var(--gn)':'var(--tx3)';const details=Object.entries(l).filter(([k])=>!['id','timestamp','type','action','ip','status'].includes(k)).map(([k,v])=>`${k}: ${v}`).join(' | ');return`<tr><td style="font-size:10px;color:var(--tx3);white-space:nowrap">${esc(t)}</td><td><span style="font-size:9px;padding:2px 6px;border-radius:3px;background:${col}22;color:${col};font-weight:600;text-transform:uppercase">${esc(l.type||'')}</span></td><td style="font-size:11px">${esc(l.action||'')}</td><td style="font-size:10px;color:var(--tx3)">${esc(l.ip||'')}</td><td style="font-size:10px;color:${sc};font-weight:600">${esc(l.status||'')}</td><td style="font-size:10px;color:var(--tx2)">${esc(details)}</td></tr>`}).join('')}catch(e){const tb=document.getElementById('logsBody');if(tb)tb.innerHTML=`<tr><td colspan="6" style="color:var(--rd)">${esc(e.message)}</td></tr>`}}
 function exportLogs(){const type=document.getElementById('logTypeFilter')?.value||'all';const search=document.getElementById('logSearch')?.value||'';window.location.href=`/api/activity-logs/export?type=${encodeURIComponent(type)}&search=${encodeURIComponent(search)}`}
 async function clearLogs(){if(!confirm('Clear all activity logs? This cannot be undone.'))return;try{await fetch('/api/activity-logs',{method:'DELETE'});loadLogs()}catch(e){alert(e.message)}}
+
+// --- User Management ---
+async function loadUsers() {
+  const tbody = document.getElementById('usersBody');
+  if (!tbody) return;
+  try {
+    const r = await fetch('/api/users');
+    if (r.status === 403) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--tx3)">Admin access required</td></tr>'; return; }
+    const users = await r.json();
+    if (!users.length) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--tx3)">No users yet</td></tr>'; return; }
+    tbody.innerHTML = users.map(u => {
+      const isSelf = _currentUser && _currentUser.username === u.username;
+      const roleColor = u.role === 'admin' ? 'var(--ac)' : 'var(--tx2)';
+      const adminBadge = u.canAccessAdmin
+        ? `<span style="font-size:10px;padding:2px 7px;border-radius:3px;background:var(--gn)22;color:var(--gn);font-weight:600">Yes</span>`
+        : `<span style="font-size:10px;padding:2px 7px;border-radius:3px;background:var(--tx3)22;color:var(--tx3)">No</span>`;
+      return `<tr>
+        <td style="font-weight:500">${esc(u.username)}${isSelf ? ' <span style="font-size:9px;color:var(--tx3)">(you)</span>' : ''}</td>
+        <td><span style="font-size:10px;font-weight:600;color:${roleColor};text-transform:uppercase">${esc(u.role)}</span></td>
+        <td>${adminBadge}</td>
+        <td style="font-size:10px;color:var(--tx3)">${u.createdAt ? u.createdAt.slice(0,10) : ''}</td>
+        <td style="white-space:nowrap">
+          <button class="bb sec" onclick="openEditUser('${u.id}','${esc(u.username)}','${u.role}',${u.canAccessAdmin})" style="font-size:10px;padding:3px 9px;margin-right:4px">Edit</button>
+          ${!isSelf ? `<button class="bb" onclick="deleteUser('${u.id}','${esc(u.username)}')" style="font-size:10px;padding:3px 9px;background:var(--rd);border-color:var(--rd)">Delete</button>` : ''}
+        </td>
+      </tr>`;
+    }).join('');
+  } catch(e) { tbody.innerHTML = `<tr><td colspan="5" style="color:var(--rd)">${esc(e.message)}</td></tr>`; }
+}
+
+async function createUser() {
+  const username = document.getElementById('newUsername').value.trim();
+  const password = document.getElementById('newPassword').value;
+  const role = document.getElementById('newRole').value;
+  const canAccessAdmin = document.getElementById('newCanAdmin').checked;
+  const res = document.getElementById('createUserResult');
+  res.style.display = 'none';
+  if (!username || !password) { res.style.display='block'; res.style.background='var(--rd)22'; res.style.color='var(--rd)'; res.textContent='Username and password are required'; return; }
+  try {
+    const r = await fetch('/api/users', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username, password, role, canAccessAdmin})});
+    const d = await r.json();
+    res.style.display = 'block';
+    if (r.ok) {
+      res.style.background = 'var(--gn)22'; res.style.color = 'var(--gn)';
+      res.textContent = `User "${d.user.username}" created successfully`;
+      document.getElementById('newUsername').value = '';
+      document.getElementById('newPassword').value = '';
+      document.getElementById('newRole').value = 'user';
+      document.getElementById('newCanAdmin').checked = false;
+      loadUsers();
+    } else { res.style.background = 'var(--rd)22'; res.style.color = 'var(--rd)'; res.textContent = d.error || 'Failed to create user'; }
+  } catch(e) { res.style.display='block'; res.style.background='var(--rd)22'; res.style.color='var(--rd)'; res.textContent=e.message; }
+}
+
+function openEditUser(id, username, role, canAccessAdmin) {
+  document.getElementById('editUserId').value = id;
+  document.getElementById('editUserName').textContent = username;
+  document.getElementById('editRole').value = role;
+  document.getElementById('editCanAdmin').checked = !!canAccessAdmin;
+  document.getElementById('editCanAdmin').disabled = role === 'admin';
+  document.getElementById('editPassword').value = '';
+  document.getElementById('editUserResult').style.display = 'none';
+  document.getElementById('editUserModal').style.display = 'flex';
+  // Disable canAdmin when role is admin
+  document.getElementById('editRole').onchange = function() {
+    document.getElementById('editCanAdmin').disabled = this.value === 'admin';
+    if (this.value === 'admin') document.getElementById('editCanAdmin').checked = true;
+  };
+}
+
+async function saveEditUser() {
+  const id = document.getElementById('editUserId').value;
+  const role = document.getElementById('editRole').value;
+  const canAccessAdmin = document.getElementById('editCanAdmin').checked;
+  const password = document.getElementById('editPassword').value;
+  const res = document.getElementById('editUserResult');
+  res.style.display = 'none';
+  const body = {role, canAccessAdmin};
+  if (password) body.password = password;
+  try {
+    const r = await fetch(`/api/users/${id}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const d = await r.json();
+    res.style.display = 'block';
+    if (r.ok) {
+      res.style.background = 'var(--gn)22'; res.style.color = 'var(--gn)'; res.textContent = 'Saved successfully';
+      setTimeout(() => { document.getElementById('editUserModal').style.display='none'; loadUsers(); }, 900);
+    } else { res.style.background = 'var(--rd)22'; res.style.color = 'var(--rd)'; res.textContent = d.error || 'Failed to update'; }
+  } catch(e) { res.style.display='block'; res.style.background='var(--rd)22'; res.style.color='var(--rd)'; res.textContent=e.message; }
+}
+
+async function deleteUser(id, username) {
+  if (!confirm(`Delete user "${username}"? This cannot be undone.`)) return;
+  try {
+    const r = await fetch(`/api/users/${id}`, {method:'DELETE'});
+    const d = await r.json();
+    if (r.ok) loadUsers();
+    else alert(d.error || 'Failed to delete user');
+  } catch(e) { alert(e.message); }
+}
 
 async function loadAdminSettings(){
 // Load AI model
@@ -961,6 +1079,26 @@ setInterval(refreshBankStats,30000);
   if (loginBtn) loginBtn.addEventListener('click', doLogin);
   var loginPassword = document.getElementById('loginPassword');
   if (loginPassword) loginPassword.addEventListener('keydown', function(e) { if (e.key === 'Enter') doLogin(); });
+  var loginUsername = document.getElementById('loginUsername');
+  if (loginUsername) loginUsername.addEventListener('keydown', function(e) { if (e.key === 'Enter') document.getElementById('loginPassword').focus(); });
+
+  // --- User management buttons ---
+  var createUserBtn = document.getElementById('createUserBtn');
+  if (createUserBtn) createUserBtn.addEventListener('click', createUser);
+  var editUserSaveBtn = document.getElementById('editUserSaveBtn');
+  if (editUserSaveBtn) editUserSaveBtn.addEventListener('click', saveEditUser);
+  var editUserCancelBtn = document.getElementById('editUserCancelBtn');
+  if (editUserCancelBtn) editUserCancelBtn.addEventListener('click', function() { document.getElementById('editUserModal').style.display='none'; });
+  // Close edit modal on backdrop click
+  var editUserModal = document.getElementById('editUserModal');
+  if (editUserModal) editUserModal.addEventListener('click', function(e) { if (e.target === this) this.style.display='none'; });
+  // Auto-check canAdmin when role=admin in create form
+  var newRole = document.getElementById('newRole');
+  if (newRole) newRole.addEventListener('change', function() {
+    var cb = document.getElementById('newCanAdmin');
+    if (this.value === 'admin') { cb.checked = true; cb.disabled = true; }
+    else { cb.disabled = false; }
+  });
 
   // --- Idle warn stay-logged-in button ---
   var idleWarnBtn = document.getElementById('idleWarnBtn');
