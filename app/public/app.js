@@ -19,7 +19,8 @@ window.fetch = function(url, opts = {}) {
     if (res.status === 401 && typeof url === 'string' && url.startsWith('/api/') && !url.includes('/login')) {
       localStorage.removeItem('sq_session_token');
       _sessionToken = null;
-      showLogin();
+      const _ol = document.getElementById('loginOverlay');
+      if (!_ol || _ol.style.display !== 'flex') showLogin();
     }
     return res;
   });
@@ -46,6 +47,9 @@ function applyUserPermissions(user) {
   // Users sub-tab — only visible to admins
   const usersTab = document.querySelector('.admin-tab-users');
   if (usersTab) usersTab.style.display = user && user.role === 'admin' ? '' : 'none';
+  // Jira Settings bar — hide for admins (they use Admin → Authentication)
+  const jiraSettingsBar = document.getElementById('jiraSettingsBar');
+  if (jiraSettingsBar) jiraSettingsBar.style.display = user && user.role === 'admin' ? 'none' : '';
   // Sidebar user bar
   const bar = document.getElementById('sbUserBar');
   if (!bar) return;
@@ -60,6 +64,27 @@ function applyUserPermissions(user) {
   }
 }
 
+let _loginCountdown = null;
+function _startLockoutCountdown(minsLeft, errEl, btn) {
+  if (_loginCountdown) clearInterval(_loginCountdown);
+  let secsLeft = minsLeft * 60;
+  btn.disabled = true;
+  function tick() {
+    const m = Math.floor(secsLeft / 60), s = secsLeft % 60;
+    errEl.textContent = `Account locked. Try again in ${m}:${String(s).padStart(2,'0')}`;
+    errEl.style.display = 'block';
+    if (secsLeft <= 0) {
+      clearInterval(_loginCountdown);
+      _loginCountdown = null;
+      btn.disabled = false;
+      btn.textContent = 'Sign In';
+      errEl.textContent = 'You can try again now.';
+    }
+    secsLeft--;
+  }
+  tick();
+  _loginCountdown = setInterval(tick, 1000);
+}
 async function doLogin() {
   const username = document.getElementById('loginUsername').value.trim();
   const pw = document.getElementById('loginPassword').value;
@@ -72,13 +97,21 @@ async function doLogin() {
     const r = await _origFetch('/api/login', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username, password:pw})});
     const d = await r.json();
     if (d.success) {
+      if (_loginCountdown) { clearInterval(_loginCountdown); _loginCountdown = null; }
       _sessionToken = d.token;
       if (d.token) localStorage.setItem('sq_session_token', d.token);
       applyUserPermissions({ username: d.username, role: d.role, canAccessAdmin: d.canAccessAdmin });
       hideLogin();
+      swTo('chat');
       _resetIdle();
+    } else if (d.locked || r.status === 429) {
+      _startLockoutCountdown(d.retryAfter || 15, errEl, btn);
+      return;
     } else {
-      errEl.textContent = d.error || 'Invalid username or password';
+      let msg = d.error || 'Invalid username or password';
+      if (d.attemptsLeft !== undefined && d.attemptsLeft > 0) msg += ` (${d.attemptsLeft} attempt${d.attemptsLeft !== 1 ? 's' : ''} left)`;
+      else if (d.attemptsLeft === 0) msg += ' — next failure will lock your account';
+      errEl.textContent = msg;
       errEl.style.display = 'block';
       document.getElementById('loginPassword').select();
     }
@@ -221,10 +254,20 @@ if(d.success){showResult(res,'ok','Connected to Anthropic API — '+d.model)}
 else{showResult(res,'err',d.error||'Connection failed')}}catch(e){showResult(res,'err',e.message)}}
 const PRODUCT_LABELS={'EV+PD':'EV+/PD'};
 function pLabel(p){return PRODUCT_LABELS[p]||p}
-function loadProducts(){fetch('/api/products').then(r=>r.json()).then(ps=>{['productSelect','docProductSelect','chatProduct','migProductSelect'].forEach(id=>{const s=document.getElementById(id);if(!s)return;const cur=s.value;s.innerHTML='<option value="">All Products</option>';ps.forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=pLabel(p);if(p===cur)o.selected=true;s.appendChild(o)})});const ip=document.getElementById('iProd');if(ip){const cur=ip.value;ip.innerHTML='<option value="" disabled selected>— Select product —</option>';ps.forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=pLabel(p);if(p===cur)o.selected=true;ip.appendChild(o)})}})}
+function loadProducts(){fetch('/api/products').then(r=>r.json()).then(ps=>{if(!Array.isArray(ps))return;['productSelect','docProductSelect','chatProduct','migProductSelect'].forEach(id=>{const s=document.getElementById(id);if(!s)return;const cur=s.value;s.innerHTML='<option value="">All Products</option>';ps.forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=pLabel(p);if(p===cur)o.selected=true;s.appendChild(o)})});const ip=document.getElementById('iProd');if(ip){const cur=ip.value;ip.innerHTML='<option value="" disabled selected>— Select product —</option>';ps.forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=pLabel(p);if(p===cur)o.selected=true;ip.appendChild(o)})}})}
 loadProducts();
 setInterval(loadProducts,30000);
-function renderProductList(){fetch('/api/products').then(r=>r.json()).then(ps=>{const el=document.getElementById('adminProductList');if(!el)return;if(!ps.length){el.innerHTML='<div style="color:var(--tx3);font-size:12px;padding:8px">No products configured</div>';return}el.innerHTML=ps.map(p=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--sf);border:1px solid var(--bd);border-radius:6px"><span style="font-size:13px;color:var(--tx)">${esc(pLabel(p))}</span><button data-del-product="${esc(p)}" class="prod-del-btn" style="background:none;border:none;color:var(--tx3);cursor:pointer;font-size:16px;padding:2px 6px;border-radius:4px;transition:color .12s" title="Remove">&times;</button></div>`).join('')})}
+// Auto-refresh active tab data every 30s
+setInterval(function(){
+  if(!_sessionToken)return;
+  const tab=localStorage.getItem('sq_active_tab')||'chat';
+  if(tab==='upload')ldBatchFw();
+  else if(tab==='import')ldImpOpts();
+  else if(tab==='migrate')ldMigFw();
+  else if(tab==='calendar'){ldCal();ldTickets();}
+  else if(tab==='admin'){const activeAdmin=document.querySelector('.admin-tab.on');if(activeAdmin){const t=activeAdmin.dataset.tab;if(t==='status')checkSystemStatus();else if(t==='bank')refreshBankStats();else if(t==='logs')loadLogs();else if(t==='users')loadUsers();}}
+},30000);
+function renderProductList(){fetch('/api/products').then(r=>r.json()).then(ps=>{if(!Array.isArray(ps))return;const el=document.getElementById('adminProductList');if(!el)return;if(!ps.length){el.innerHTML='<div style="color:var(--tx3);font-size:12px;padding:8px">No products configured</div>';return}el.innerHTML=ps.map(p=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--sf);border:1px solid var(--bd);border-radius:6px"><span style="font-size:13px;color:var(--tx)">${esc(pLabel(p))}</span><button data-del-product="${esc(p)}" class="prod-del-btn" style="background:none;border:none;color:var(--tx3);cursor:pointer;font-size:16px;padding:2px 6px;border-radius:4px;transition:color .12s" title="Remove">&times;</button></div>`).join('')})}
 async function addProduct(){const inp=document.getElementById('newProductName');const name=inp.value.trim();const res=document.getElementById('adminProductResult');if(!name){showResult(res,'err','Enter a product name');return}try{const r=await fetch('/api/products',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});const d=await r.json();if(d.success){inp.value='';showResult(res,'ok',`Product "${pLabel(name)}" added`);setTimeout(()=>res.style.display='none',2000);loadProducts();renderProductList()}else{showResult(res,'err',d.error||'Failed to add product')}}catch(e){showResult(res,'err',e.message)}}
 async function delProduct(name){if(!confirm(`Remove product "${pLabel(name)}"? This won't delete any files.`))return;const res=document.getElementById('adminProductResult');try{const r=await fetch('/api/products/'+encodeURIComponent(name),{method:'DELETE'});const d=await r.json();if(d.success){showResult(res,'ok',`Product "${pLabel(name)}" removed`);setTimeout(()=>res.style.display='none',2000);loadProducts();renderProductList()}else{showResult(res,'err',d.error||'Failed')}}catch(e){showResult(res,'err',e.message)}}
 
@@ -346,7 +389,7 @@ renderHist();
   }
 
 })();
-function sw(mode,btn){localStorage.setItem('sq_active_tab',mode);document.querySelectorAll('.sb-nav-item').forEach(b=>b.classList.remove('on'));btn.classList.add('on');document.querySelectorAll('.pn').forEach(p=>p.classList.remove('on'));document.getElementById({chat:'chatPanel',upload:'uploadPanel',calendar:'calendarPanel',import:'importPanel',migrate:'migratePanel',admin:'adminPanel'}[mode]).classList.add('on');const mnEl=document.querySelector('.mn');mnEl.classList.toggle('no-top',mode!=='chat');mnEl.style.display=mode==='admin'?'none':'flex';const ht=document.getElementById('histToggle');const hb=document.getElementById('histBody');if(ht)ht.classList.toggle('open',mode==='chat');if(hb)hb.style.display=mode==='chat'?'':'none';if(mode==='calendar'){ldCal();ldAssignees();ldTickets();ldIssueTypes();ldStatuses()}if(mode==='import')ldImpOpts();if(mode==='upload')ldBatchFw();if(mode==='migrate')ldMigFw();if(mode==='admin')loadAdminSettings()}
+function sw(mode,btn){localStorage.setItem('sq_active_tab',mode);document.querySelectorAll('.sb-nav-item').forEach(b=>b.classList.remove('on'));btn.classList.add('on');document.querySelectorAll('.pn').forEach(p=>p.classList.remove('on'));document.getElementById({chat:'chatPanel',upload:'uploadPanel',calendar:'calendarPanel',import:'importPanel',migrate:'migratePanel',admin:'adminPanel'}[mode]).classList.add('on');const mnEl=document.querySelector('.mn');mnEl.classList.toggle('no-top',mode!=='chat');mnEl.style.display=mode==='admin'?'none':'flex';const ht=document.getElementById('histToggle');const hb=document.getElementById('histBody');if(ht)ht.classList.toggle('open',mode==='chat');if(hb)hb.style.display=mode==='chat'?'':'none';if(mode==='calendar'){ldCal();ldAssignees();ldTickets();ldIssueTypes();ldStatuses();const hasAtl=localStorage.getItem('sq_atl_url')&&localStorage.getItem('sq_atl_email');updateJiraConnBadge(!!hasAtl,hasAtl?'Connected':'Not configured')}if(mode==='import')ldImpOpts();if(mode==='upload')ldBatchFw();if(mode==='migrate')ldMigFw();if(mode==='admin')loadAdminSettings()}
 function toggleHist(){const ht=document.getElementById('histToggle');const hb=document.getElementById('histBody');if(ht&&hb){const open=ht.classList.toggle('open');hb.style.display=open?'':'none'}}
 function saveConv(){if(!chHist.length)return;const t=chHist[0]?.content?.substring(0,40)||'New chat';const id=curCID||Date.now().toString();const idx=convs.findIndex(c=>c.id===id);const cv={id,title:t,messages:chHist,date:new Date().toISOString()};if(idx>=0)convs[idx]=cv;else convs.unshift(cv);if(convs.length>20)convs.pop();localStorage.setItem('sq_convs',JSON.stringify(convs));curCID=id;renderHist()}
 function loadConv(id){const c=convs.find(x=>x.id===id);if(!c)return;curCID=id;chHist=[...c.messages];const el=document.getElementById('chMsg');el.innerHTML='';c.messages.forEach(m=>appMsg(m.role,m.content,false));renderHist();document.getElementById('chScr').scrollTop=document.getElementById('chScr').scrollHeight}
@@ -660,6 +703,7 @@ async function loadUsers() {
   if (!tbody) return;
   try {
     const r = await fetch('/api/users');
+    if (r.status === 401) { showLogin(); return; }
     if (r.status === 403) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--tx3)">Admin access required</td></tr>'; return; }
     const users = await r.json();
     if (!users.length) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--tx3)">No users yet</td></tr>'; return; }
@@ -690,7 +734,9 @@ async function createUser() {
   const canAccessAdmin = document.getElementById('newCanAdmin').checked;
   const res = document.getElementById('createUserResult');
   res.style.display = 'none';
-  if (!username || !password) { res.style.display='block'; res.style.background='var(--rd)22'; res.style.color='var(--rd)'; res.textContent='Username and password are required'; return; }
+  if (!username) { res.style.display='block'; res.style.background='var(--rd)22'; res.style.color='var(--rd)'; res.textContent='Username is required'; return; }
+  if (!password) { res.style.display='block'; res.style.background='var(--rd)22'; res.style.color='var(--rd)'; res.textContent='Password is required'; return; }
+  if (password.length < 8) { res.style.display='block'; res.style.background='var(--rd)22'; res.style.color='var(--rd)'; res.textContent='Password must be at least 8 characters'; return; }
   try {
     const r = await fetch('/api/users', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username, password, role, canAccessAdmin})});
     const d = await r.json();
@@ -779,6 +825,13 @@ if(!token){res.style.display='flex';res.className='admin-result warn';res.textCo
 res.style.display='flex';res.className='admin-result warn';res.textContent='Authenticating...';
 try{const r=await fetch('/api/atlassian/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({base:url,email,token,project:project||'ISC'})});const d=await r.json();if(r.ok){res.className='admin-result ok';res.textContent=d.message||'Connected successfully';document.getElementById('cfgAtlToken').value='';document.getElementById('cfgAtlToken').placeholder='API token saved — only enter to change';if(d.project)document.getElementById('sysProject').textContent=d.project;localStorage.setItem('sq_jira_project',d.project||project);checkSystemStatus()}else{res.className='admin-result err';res.textContent=d.error||'Authentication failed'}}catch(e){res.className='admin-result err';res.textContent=e.message}}
 
+function toggleJiraSettings(){const panel=document.getElementById('jiraSettingsPanel');const chevron=document.getElementById('jiraSettingsChevron');if(!panel)return;const open=panel.style.display==='none'||panel.style.display==='';panel.style.display=open?'block':'none';if(chevron)chevron.style.transform=open?'rotate(180deg)':'';if(open){const isAdmin=_currentUser&&_currentUser.role==='admin';const adminForm=document.getElementById('jiraAdminForm');const userView=document.getElementById('jiraUserView');if(adminForm)adminForm.style.display=isAdmin?'none':'';if(userView)userView.style.display=isAdmin?'':'none';if(!isAdmin)loadJiraSettingsFields()}}
+document.addEventListener('DOMContentLoaded',function(){const bar=document.getElementById('jiraSettingsBar');if(bar){const hdr=bar.querySelector('[data-jira-toggle]')||bar.firstElementChild;if(hdr)hdr.addEventListener('click',toggleJiraSettings)}});
+function loadJiraSettingsFields(){const url=localStorage.getItem('sq_atl_url')||'';const email=localStorage.getItem('sq_atl_email')||'';const project=localStorage.getItem('sq_jira_project')||'ISC';const u=document.getElementById('jiraUrl');const e=document.getElementById('jiraEmail');const p=document.getElementById('jiraProject');if(u&&!u.value)u.value=url;if(e&&!e.value)e.value=email;if(p&&!p.value)p.value=project}
+function updateJiraConnBadge(ok,label){const b=document.getElementById('jiraConnBadge');if(!b)return;b.textContent=label||(ok?'Connected':'Not configured');b.style.background=ok?'var(--gn)22':'var(--tx3)22';b.style.color=ok?'var(--gn)':'var(--tx3)'}
+async function saveJiraSettings(){const url=document.getElementById('jiraUrl').value.trim();const email=document.getElementById('jiraEmail').value.trim();const token=document.getElementById('jiraToken').value.trim();const project=(document.getElementById('jiraProject').value.trim()||'ISC').toUpperCase();const res=document.getElementById('jiraSettingsResult');res.style.display='none';if(!url||!email){res.style.display='inline-block';res.style.background='var(--rd)22';res.style.color='var(--rd)';res.textContent='URL and email are required';return}localStorage.setItem('sq_atl_url',url);localStorage.setItem('sq_atl_email',email);localStorage.setItem('sq_jira_project',project);// also sync admin fields if they exist
+const au=document.getElementById('cfgAtlUrl');const ae=document.getElementById('cfgAtlEmail');const ap=document.getElementById('cfgAtlProject');if(au)au.value=url;if(ae)ae.value=email;if(ap)ap.value=project;if(!token){res.style.display='inline-block';res.style.background='var(--warn,#f59e0b)22';res.style.color='var(--warn,#f59e0b)';res.textContent='Enter API token to authenticate';return}res.style.display='inline-block';res.style.background='var(--tx3)22';res.style.color='var(--tx3)';res.textContent='Connecting...';try{const r=await fetch('/api/atlassian/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({base:url,email,token,project})});const d=await r.json();if(r.ok){res.style.background='var(--gn)22';res.style.color='var(--gn)';res.textContent=d.message||'Connected';document.getElementById('jiraToken').value='';document.getElementById('jiraToken').placeholder='Token saved — enter to update';updateJiraConnBadge(true,'Connected');checkSystemStatus();ldCal();ldTickets()}else{res.style.background='var(--rd)22';res.style.color='var(--rd)';res.textContent=d.error||'Authentication failed';updateJiraConnBadge(false,'Auth failed')}}catch(e){res.style.background='var(--rd)22';res.style.color='var(--rd)';res.textContent=e.message}}
+async function testJiraConn(){const res=document.getElementById('jiraSettingsResult');res.style.display='inline-block';res.style.background='var(--tx3)22';res.style.color='var(--tx3)';res.textContent='Testing...';try{const r=await fetch('/api/jira/test',{method:'POST'});const d=await r.json();if(d.success){res.style.background='var(--gn)22';res.style.color='var(--gn)';res.textContent='Jira: '+d.message;updateJiraConnBadge(true,'Connected')}else{res.style.background='var(--rd)22';res.style.color='var(--rd)';res.textContent='Jira: '+(d.error||'Failed');updateJiraConnBadge(false,'Error')}}catch(e){res.style.background='var(--rd)22';res.style.color='var(--rd)';res.textContent=e.message}}
 async function testAtlassianConn(){const res=document.getElementById('cfgAtlResult');res.style.display='flex';res.className='admin-result warn';res.textContent='Testing connections...';
 let msgs=[];
 try{const r=await fetch('/api/confluence/test',{method:'POST'});const d=await r.json();msgs.push(d.success?'Confluence: Connected'+(d.spaces?.length?' ('+d.spaces.length+' spaces)':''):'Confluence: '+(d.error||'Failed'))}catch{msgs.push('Confluence: Not reachable')}
@@ -1085,6 +1138,12 @@ setInterval(refreshBankStats,30000);
     b.addEventListener('click', function() { document.getElementById('saveModal').classList.remove('vis'); });
   });
   document.querySelectorAll('[data-action="doSaveAnswer"]').forEach(function(b) { b.addEventListener('click', doSaveAnswer); });
+
+  // --- Jira Settings buttons ---
+  var jiraSaveBtn = document.getElementById('jiraSaveBtn');
+  if (jiraSaveBtn) jiraSaveBtn.addEventListener('click', saveJiraSettings);
+  var jiraTestBtn = document.getElementById('jiraTestBtn');
+  if (jiraTestBtn) jiraTestBtn.addEventListener('click', testJiraConn);
 
   // --- Login ---
   var loginBtn = document.getElementById('loginBtn');

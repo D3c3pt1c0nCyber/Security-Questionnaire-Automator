@@ -1,0 +1,11 @@
+services:
+  security-qa-dashboard:
+    build: .
+    container_name: security-qa-dashboard
+    ports:
+      - "3456:3456"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

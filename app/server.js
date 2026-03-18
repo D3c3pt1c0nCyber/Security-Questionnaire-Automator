@@ -537,7 +537,15 @@ const loginLimiter = rateLimit({
   max: 5,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Too many login attempts, please try again later' }
+  handler: (req, res) => {
+    const msLeft = req.rateLimit.resetTime ? req.rateLimit.resetTime - Date.now() : 15 * 60 * 1000;
+    const minsLeft = Math.ceil(msLeft / 60000);
+    return res.status(429).json({
+      error: `Account temporarily locked. Try again in ${minsLeft} minute${minsLeft !== 1 ? 's' : ''}.`,
+      retryAfter: minsLeft,
+      locked: true
+    });
+  }
 });
 
 // Login endpoint
@@ -546,15 +554,16 @@ app.post('/api/login', loginLimiter, (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) return res.status(400).json({ error: 'Username and password are required' });
   const user = _users.find(u => u.username.toLowerCase() === username.toLowerCase());
+  const attemptsLeft = req.rateLimit ? req.rateLimit.remaining : undefined;
   if (!user) {
     logActivity('auth', 'Login failed', { username, status: 'failed', reason: 'unknown user' }, req);
-    return res.status(401).json({ error: 'Invalid username or password' });
+    return res.status(401).json({ error: 'Invalid username or password', attemptsLeft });
   }
   let valid = false;
   try { valid = verifyPassword(password, user.salt, user.passwordHash); } catch {}
   if (!valid) {
     logActivity('auth', 'Login failed', { username, status: 'failed', reason: 'wrong password' }, req);
-    return res.status(401).json({ error: 'Invalid username or password' });
+    return res.status(401).json({ error: 'Invalid username or password', attemptsLeft });
   }
   const token = generateSessionToken();
   activeSessions.set(token, { created: Date.now(), username: user.username, role: user.role, canAccessAdmin: user.canAccessAdmin });
@@ -576,11 +585,11 @@ app.get('/api/me', requireAuth, (req, res) => {
 });
 
 // --- User management (admin only) ---
-app.get('/api/users', requireAdmin, (_req, res) => {
+app.get('/api/users', requireAuth, requireAdmin, (_req, res) => {
   res.json(_users.map(u => ({ id: u.id, username: u.username, role: u.role, canAccessAdmin: u.canAccessAdmin, createdAt: u.createdAt, createdBy: u.createdBy })));
 });
 
-app.post('/api/users', requireAdmin, (req, res) => {
+app.post('/api/users', requireAuth, requireAdmin, (req, res) => {
   const { username, password, role = 'user', canAccessAdmin = false } = req.body;
   if (!username || !username.trim()) return res.status(400).json({ error: 'Username is required' });
   if (!password || password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
@@ -594,7 +603,7 @@ app.post('/api/users', requireAdmin, (req, res) => {
   res.json({ success: true, user: { id: newUser.id, username: newUser.username, role: newUser.role, canAccessAdmin: newUser.canAccessAdmin } });
 });
 
-app.put('/api/users/:id', requireAdmin, (req, res) => {
+app.put('/api/users/:id', requireAuth, requireAdmin, (req, res) => {
   const user = _users.find(u => u.id === req.params.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
   // Prevent admin from removing their own admin role
@@ -614,7 +623,7 @@ app.put('/api/users/:id', requireAdmin, (req, res) => {
   res.json({ success: true, user: { id: user.id, username: user.username, role: user.role, canAccessAdmin: user.canAccessAdmin } });
 });
 
-app.delete('/api/users/:id', requireAdmin, (req, res) => {
+app.delete('/api/users/:id', requireAuth, requireAdmin, (req, res) => {
   const idx = _users.findIndex(u => u.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'User not found' });
   if (req.user?.username === _users[idx].username) return res.status(400).json({ error: 'You cannot delete your own account' });
@@ -650,11 +659,6 @@ app.use('/api', apiLimiter, requireAuth);
 
 // Unified Atlassian Authentication (Confluence + Jira)
 app.post('/api/atlassian/auth', (req, res) => {
-  // If credentials are already configured via environment variables, block runtime overwrite
-  if (process.env.ATLASSIAN_TOKEN) {
-    return res.status(403).json({ error: 'Atlassian credentials are managed via environment variables and cannot be changed at runtime.' });
-  }
-
   const { base, email, token, project } = req.body;
   if (!base || !email || !token) {
     return res.status(400).json({ error: 'Instance URL, email, and API token are required' });
@@ -724,7 +728,7 @@ app.get('/api/atlassian/project', (req, res) => {
   res.json({ project: JIRA_PROJECT });
 });
 
-app.post('/api/atlassian/project', (req, res) => {
+app.post('/api/atlassian/project', requireAdmin, (req, res) => {
   const { project } = req.body;
   if (!project) return res.status(400).json({ error: 'Project key is required' });
   JIRA_PROJECT = project.toUpperCase();
