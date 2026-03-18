@@ -46,6 +46,18 @@ function applyUserPermissions(user) {
   // Users sub-tab — only visible to admins
   const usersTab = document.querySelector('.admin-tab-users');
   if (usersTab) usersTab.style.display = user && user.role === 'admin' ? '' : 'none';
+  // Sidebar user bar
+  const bar = document.getElementById('sbUserBar');
+  if (!bar) return;
+  if (user) {
+    document.getElementById('sbUsername').textContent = user.username || '';
+    const roleEl = document.getElementById('sbUserRole');
+    roleEl.textContent = user.role === 'admin' ? 'Admin' : 'User';
+    roleEl.style.color = user.role === 'admin' ? 'var(--ac)' : 'var(--tx3)';
+    bar.style.display = 'flex';
+  } else {
+    bar.style.display = 'none';
+  }
 }
 
 async function doLogin() {
@@ -1098,6 +1110,12 @@ setInterval(refreshBankStats,30000);
     var cb = document.getElementById('newCanAdmin');
     if (this.value === 'admin') { cb.checked = true; cb.disabled = true; }
     else { cb.disabled = false; }
+  });
+
+  // --- Sidebar logout button ---
+  var sbLogoutBtn = document.getElementById('sbLogoutBtn');
+  if (sbLogoutBtn) sbLogoutBtn.addEventListener('click', function() {
+    if (confirm('Log out?')) _doLogout();
   });
 
   // --- Idle warn stay-logged-in button ---

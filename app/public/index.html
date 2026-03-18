@@ -30,6 +30,20 @@
 </div>
 </div>
 <div class="sb-foot">
+<div id="sbUserBar" style="display:none;align-items:center;justify-content:space-between;gap:6px;padding:6px 8px;background:var(--bg2);border:1px solid var(--bd);border-radius:7px;margin-bottom:8px">
+  <div style="display:flex;align-items:center;gap:7px;min-width:0">
+    <div style="width:28px;height:28px;border-radius:50%;background:var(--ac)22;border:1.5px solid var(--ac)44;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--ac)" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+    </div>
+    <div style="min-width:0">
+      <div id="sbUsername" style="font-size:12px;font-weight:600;color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
+      <div id="sbUserRole" style="font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.4px"></div>
+    </div>
+  </div>
+  <button id="sbLogoutBtn" title="Log out" style="background:none;border:none;cursor:pointer;padding:4px;border-radius:5px;color:var(--tx3);display:flex;align-items:center;flex-shrink:0" onmouseover="this.style.color='var(--rd)';this.style.background='var(--rd)11'" onmouseout="this.style.color='var(--tx3)';this.style.background='none'">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+  </button>
+</div>
 <label>Model</label>
 <select class="sb-sel" id="modelSelect"><option value="claude-opus-4-6">Claude Opus 4.6</option><option value="claude-sonnet-4-6">Claude Sonnet 4.6</option><option value="claude-haiku-4-5-20251001">Claude Haiku 4.5</option></select>
 <div id="jobsBadge"><span id="jobsBadgeDot"></span><span id="jobsBadgeTxt">1 job running</span></div>
