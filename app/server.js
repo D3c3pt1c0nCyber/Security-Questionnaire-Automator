@@ -19,8 +19,16 @@ const MODEL_HAIKU = 'claude-haiku-4-5-20251001';
 const app = express();
 app.set('trust proxy', 1); // Trust first proxy (Render, Heroku, etc.)
 const PORT = process.env.PORT || 3456;
-const SERVER_API_KEY = process.env.ANTHROPIC_API_KEY || '';
+let SERVER_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const APP_PASSWORD = process.env.APP_PASSWORD || '';
+const SERVER_CONFIG_FILE = path.resolve(__dirname, 'data', 'server-config.json');
+// Load persisted API key (overrides env var if set by admin at runtime)
+try {
+  if (fs.existsSync(SERVER_CONFIG_FILE)) {
+    const cfg = JSON.parse(fs.readFileSync(SERVER_CONFIG_FILE, 'utf-8'));
+    if (cfg.apiKey) SERVER_API_KEY = cfg.apiKey;
+  }
+} catch {}
 
 // Warn if APP_PASSWORD not set (only required for bootstrapping the first admin)
 if (process.env.NODE_ENV === 'production' && !process.env.APP_PASSWORD) {
@@ -36,6 +44,7 @@ const OUTPUT_DIR = path.resolve(__dirname, 'data', 'output');
 const UPLOAD_DIR = path.resolve(__dirname, 'uploads');
 const LOGS_FILE = path.resolve(__dirname, 'data', 'activity-logs.json');
 const USERS_FILE = path.resolve(__dirname, 'data', 'users.json');
+const USER_ATL_CREDS_FILE = path.resolve(__dirname, 'data', 'user-atl-creds.json');
 
 // Activity log
 let activityLogs = [];
@@ -139,6 +148,30 @@ function setAtlassianCredentials(base, email, token) {
   ATLASSIAN_EMAIL = email;
   ATLASSIAN_TOKEN = token;
   ATLASSIAN_AUTH = (email && token) ? Buffer.from(`${email}:${token}`).toString('base64') : '';
+}
+
+// Per-user Atlassian credentials store (keyed by username)
+let _userAtlCreds = {};
+
+function saveUserAtlCreds() {
+  fs.writeFile(USER_ATL_CREDS_FILE, JSON.stringify(_userAtlCreds, null, 2), () => {});
+}
+
+(function loadUserAtlCreds() {
+  try { if (fs.existsSync(USER_ATL_CREDS_FILE)) _userAtlCreds = JSON.parse(fs.readFileSync(USER_ATL_CREDS_FILE, 'utf-8')); } catch {}
+})();
+
+// Return per-user creds if configured, otherwise fall back to globals
+function getAtlCreds(username, role) {
+  const u = username && _userAtlCreds[username];
+  if (u && u.base && u.email && u.token) {
+    return { base: u.base, email: u.email, token: u.token, auth: Buffer.from(`${u.email}:${u.token}`).toString('base64'), project: u.project || JIRA_PROJECT };
+  }
+  // Only admins fall back to global credentials; regular users get empty creds
+  if (role === 'admin' || !username) {
+    return { base: ATLASSIAN_BASE, email: ATLASSIAN_EMAIL, token: ATLASSIAN_TOKEN, auth: ATLASSIAN_AUTH, project: JIRA_PROJECT };
+  }
+  return { base: '', email: '', token: '', auth: '', project: '' };
 }
 
 // Security: validate that a resolved path stays within an allowed directory
@@ -530,40 +563,59 @@ app.use(helmet({
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json({ limit: '50mb' }));
 
-// Strict rate limiter for login (5 attempts per 15 minutes)
-const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 5,
-  standardHeaders: true,
-  legacyHeaders: false,
-  handler: (req, res) => {
-    const msLeft = req.rateLimit.resetTime ? req.rateLimit.resetTime - Date.now() : 15 * 60 * 1000;
-    const minsLeft = Math.ceil(msLeft / 60000);
+// Failed-login tracker: lockout after 5 failed attempts per IP per 15 minutes
+const _loginFailures = new Map(); // ip -> { count, resetAt }
+const LOGIN_MAX_FAILURES = 5;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+
+function getLoginFailures(ip) {
+  const rec = _loginFailures.get(ip);
+  if (!rec || Date.now() > rec.resetAt) return { count: 0, resetAt: Date.now() + LOGIN_WINDOW_MS };
+  return rec;
+}
+
+function recordLoginFailure(ip) {
+  const rec = getLoginFailures(ip);
+  rec.count += 1;
+  _loginFailures.set(ip, rec);
+  return rec;
+}
+
+function clearLoginFailures(ip) {
+  _loginFailures.delete(ip);
+}
+
+// Login endpoint
+app.post('/api/login', (req, res) => {
+  if (!APP_PASSWORD) return res.json({ success: true, token: null, username: 'guest', role: 'admin', canAccessAdmin: true });
+  const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
+  const failures = getLoginFailures(ip);
+  if (failures.count >= LOGIN_MAX_FAILURES) {
+    const minsLeft = Math.ceil((failures.resetAt - Date.now()) / 60000);
     return res.status(429).json({
       error: `Account temporarily locked. Try again in ${minsLeft} minute${minsLeft !== 1 ? 's' : ''}.`,
       retryAfter: minsLeft,
       locked: true
     });
   }
-});
-
-// Login endpoint
-app.post('/api/login', loginLimiter, (req, res) => {
-  if (!APP_PASSWORD) return res.json({ success: true, token: null, username: 'guest', role: 'admin', canAccessAdmin: true });
   const { username, password } = req.body;
   if (!username || !password) return res.status(400).json({ error: 'Username and password are required' });
   const user = _users.find(u => u.username.toLowerCase() === username.toLowerCase());
-  const attemptsLeft = req.rateLimit ? req.rateLimit.remaining : undefined;
   if (!user) {
+    const rec = recordLoginFailure(ip);
+    const attemptsLeft = LOGIN_MAX_FAILURES - rec.count;
     logActivity('auth', 'Login failed', { username, status: 'failed', reason: 'unknown user' }, req);
     return res.status(401).json({ error: 'Invalid username or password', attemptsLeft });
   }
   let valid = false;
   try { valid = verifyPassword(password, user.salt, user.passwordHash); } catch {}
   if (!valid) {
+    const rec = recordLoginFailure(ip);
+    const attemptsLeft = LOGIN_MAX_FAILURES - rec.count;
     logActivity('auth', 'Login failed', { username, status: 'failed', reason: 'wrong password' }, req);
     return res.status(401).json({ error: 'Invalid username or password', attemptsLeft });
   }
+  clearLoginFailures(ip);
   const token = generateSessionToken();
   activeSessions.set(token, { created: Date.now(), username: user.username, role: user.role, canAccessAdmin: user.canAccessAdmin });
   logActivity('auth', 'Login successful', { username: user.username, role: user.role, status: 'success' }, req);
@@ -636,7 +688,7 @@ app.delete('/api/users/:id', requireAuth, requireAdmin, (req, res) => {
 
 // Check if auth is required
 app.get('/api/auth-status', (_req, res) => {
-  res.json({ required: !!APP_PASSWORD });
+  res.json({ required: !!APP_PASSWORD, hasApiKey: !!SERVER_API_KEY });
 });
 
 // Download endpoint (before auth — browser navigates directly, can't send headers)
@@ -687,12 +739,27 @@ app.post('/api/atlassian/auth', (req, res) => {
     if (!confluenceOk && !jiraOk) {
       return res.status(401).json({ error: 'Authentication failed for both Confluence and Jira. Check your credentials.' });
     }
-    setAtlassianCredentials(cleanBase, email, token);
-    if (project) JIRA_PROJECT = project.toUpperCase();
+    const cleanProject = project ? project.toUpperCase() : null;
+    const username = req.user?.username;
+    const isAdmin = req.user?.role === 'admin';
+
+    // Admins update globals (affects all users without personal config) AND their own store
+    if (isAdmin) {
+      setAtlassianCredentials(cleanBase, email, token);
+      if (cleanProject) JIRA_PROJECT = cleanProject;
+    }
+
+    // Always save to per-user store (keyed by username)
+    if (username) {
+      _userAtlCreds[username] = { base: cleanBase, email, token, project: cleanProject || JIRA_PROJECT };
+      saveUserAtlCreds();
+    }
+
+    const effectiveProject = cleanProject || JIRA_PROJECT;
     const parts = [];
     if (confluenceOk) parts.push('Confluence');
     if (jiraOk) parts.push('Jira');
-    res.json({ success: true, message: `Connected to ${parts.join(' & ')}`, confluence: confluenceOk, jira: jiraOk, project: JIRA_PROJECT });
+    res.json({ success: true, message: `Connected to ${parts.join(' & ')}`, confluence: confluenceOk, jira: jiraOk, project: effectiveProject });
   }
 
   // Test Confluence
@@ -724,19 +791,28 @@ app.post('/api/atlassian/auth', (req, res) => {
 
 // Get/set project key
 app.get('/api/atlassian/project', (req, res) => {
-  res.json({ project: JIRA_PROJECT });
+  const creds = getAtlCreds(req.user?.username, req.user?.role);
+  res.json({ project: creds.project });
 });
 
 app.post('/api/atlassian/project', requireAdmin, (req, res) => {
   const { project } = req.body;
   if (!project) return res.status(400).json({ error: 'Project key is required' });
-  JIRA_PROJECT = project.toUpperCase();
-  res.json({ success: true, project: JIRA_PROJECT });
+  const cleanProject = project.toUpperCase();
+  // Update global
+  JIRA_PROJECT = cleanProject;
+  // Also update per-user store for the calling admin
+  const username = req.user?.username;
+  if (username) {
+    _userAtlCreds[username] = { ..._userAtlCreds[username], project: cleanProject };
+    saveUserAtlCreds();
+  }
+  res.json({ success: true, project: cleanProject });
 });
 
 // Test Claude API key
 app.post('/api/test-api-key', (req, res) => {
-  const apiKey = req.body.apiKey || SERVER_API_KEY;
+  const apiKey = SERVER_API_KEY;
   if (!apiKey) return res.status(400).json({ error: 'API key is required' });
 
   const body = JSON.stringify({ model: MODEL_HAIKU, max_tokens: 1, messages: [{ role: 'user', content: 'hi' }] });
@@ -763,6 +839,23 @@ app.post('/api/test-api-key', (req, res) => {
   apiReq.setTimeout(10000, () => { apiReq.destroy(); res.status(504).json({ error: 'Connection timed out' }); });
   apiReq.write(body);
   apiReq.end();
+});
+
+// Admin: save Claude API key server-side
+app.post('/api/admin/api-key', requireAdmin, (req, res) => {
+  const { apiKey } = req.body;
+  if (!apiKey) return res.status(400).json({ error: 'API key required' });
+  SERVER_API_KEY = apiKey;
+  let cfg = {};
+  try { cfg = JSON.parse(fs.readFileSync(SERVER_CONFIG_FILE, 'utf-8')); } catch {}
+  cfg.apiKey = apiKey;
+  try {
+    fs.writeFileSync(SERVER_CONFIG_FILE, JSON.stringify(cfg, null, 2));
+    logActivity('admin', 'Claude API key updated', { status: 'success' }, req);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: safeError(err) });
+  }
 });
 
 // Get available products
@@ -880,36 +973,39 @@ app.delete('/api/frameworks/:name/versions/:version', (req, res) => {
 });
 
 // Get current Jira configuration status
-app.get('/api/jira/status', (_req, res) => {
+app.get('/api/jira/status', (req, res) => {
+  const creds = getAtlCreds(req.user?.username, req.user?.role);
   res.json({
-    configured: !!(ATLASSIAN_BASE && ATLASSIAN_EMAIL && ATLASSIAN_TOKEN),
-    base: ATLASSIAN_BASE ? ATLASSIAN_BASE.split('//')[1] || ATLASSIAN_BASE : 'Not configured',
-    email: ATLASSIAN_EMAIL ? '***@***' : 'Not configured'
+    configured: !!(creds.base && creds.email && creds.token),
+    base: creds.base ? creds.base.split('//')[1] || creds.base : 'Not configured',
+    email: creds.email ? '***@***' : 'Not configured'
   });
 });
 
 // Get current Confluence configuration status
-app.get('/api/confluence/status', (_req, res) => {
+app.get('/api/confluence/status', (req, res) => {
+  const creds = getAtlCreds(req.user?.username, req.user?.role);
   res.json({
-    configured: !!(ATLASSIAN_BASE && ATLASSIAN_EMAIL && ATLASSIAN_TOKEN),
-    baseUrl: ATLASSIAN_BASE ? `${ATLASSIAN_BASE}/wiki` : 'Not configured',
-    email: ATLASSIAN_EMAIL ? '***@***' : 'Not configured',
-    enabledConfluence: !!(ATLASSIAN_BASE && ATLASSIAN_EMAIL && ATLASSIAN_TOKEN)
+    configured: !!(creds.base && creds.email && creds.token),
+    baseUrl: creds.base ? `${creds.base}/wiki` : 'Not configured',
+    email: creds.email ? '***@***' : 'Not configured',
+    enabledConfluence: !!(creds.base && creds.email && creds.token)
   });
 });
 
 // Test Confluence connection
 app.post('/api/confluence/test', (req, res) => {
-  if (!ATLASSIAN_BASE || !ATLASSIAN_AUTH) {
+  const creds = getAtlCreds(req.user?.username, req.user?.role);
+  if (!creds.base || !creds.auth) {
     return res.status(400).json({ error: 'Confluence not configured' });
   }
 
   const options = {
-    hostname: new URL(ATLASSIAN_BASE).hostname,
+    hostname: new URL(creds.base).hostname,
     path: '/wiki/rest/api/space?limit=5',
     method: 'GET',
     headers: {
-      'Authorization': `Basic ${ATLASSIAN_AUTH}`,
+      'Authorization': `Basic ${creds.auth}`,
       'Accept': 'application/json'
     }
   };
@@ -940,16 +1036,17 @@ app.post('/api/confluence/test', (req, res) => {
 
 // Test Jira connection
 app.post('/api/jira/test', (req, res) => {
-  if (!ATLASSIAN_BASE || !ATLASSIAN_AUTH) {
+  const creds = getAtlCreds(req.user?.username, req.user?.role);
+  if (!creds.base || !creds.auth) {
     return res.status(400).json({ error: 'Jira not configured' });
   }
 
   const options = {
-    hostname: new URL(ATLASSIAN_BASE).hostname,
+    hostname: new URL(creds.base).hostname,
     path: '/rest/api/3/myself',
     method: 'GET',
     headers: {
-      'Authorization': `Basic ${ATLASSIAN_AUTH}`,
+      'Authorization': `Basic ${creds.auth}`,
       'Content-Type': 'application/json'
     }
   };
@@ -1146,8 +1243,8 @@ app.post('/api/upload-multi', uploadLimiter, upload.array('files', 10), async (r
 
 // --- Chat endpoint ---
 app.post('/api/chat', aiLimiter, async (req, res) => {
-  const { messages, apiKey: clientKey, model, product, attachedFiles, searchConfluence: doConfluence = true, searchJira: doJira = true } = req.body;
-  const apiKey = clientKey || SERVER_API_KEY;
+  const { messages, model, product, attachedFiles, searchConfluence: doConfluence = true, searchJira: doJira = true } = req.body;
+  const apiKey = SERVER_API_KEY;
 
   if (!apiKey) return res.status(400).json({ error: 'Anthropic API key required' });
   const lastMsg = messages && messages.length ? messages[messages.length - 1]?.content : '';
@@ -1197,10 +1294,11 @@ app.post('/api/chat', aiLimiter, async (req, res) => {
       res.write(`data: ${JSON.stringify({ type: 'status', message: 'Searching local answer bank...' })}\n\n`);
     }
 
+    const _chatCreds = getAtlCreds(req.user?.username, req.user?.role);
     const [confluenceResults, jiraResults] = await Promise.all([
-      doConfluence ? searchConfluence(latestMsg, 5) : Promise.resolve([]),
-      doJira ? searchJira(`project = ${JIRA_PROJECT} AND text ~ "${sanitizeJql(latestMsg).substring(0, 100)}" ORDER BY updated DESC`, 5)
-        .catch(() => searchJira(`project = ${JIRA_PROJECT} ORDER BY updated DESC`, 5)) : Promise.resolve([])
+      doConfluence ? searchConfluence(latestMsg, 5, _chatCreds) : Promise.resolve([]),
+      doJira ? searchJira(`project = ${_chatCreds.project} AND text ~ "${sanitizeJql(latestMsg).substring(0, 100)}" ORDER BY updated DESC`, 5, _chatCreds)
+        .catch(() => searchJira(`project = ${_chatCreds.project} ORDER BY updated DESC`, 5, _chatCreds)) : Promise.resolve([])
     ]);
 
     let confluenceContext = '';
@@ -1642,8 +1740,8 @@ async function runBatchJob(job, { filePath, fileType, sheetName, questionColumn,
 }
 
 app.post('/api/process', aiLimiter, (req, res) => {
-  const { filePath: rawFilePath, fileType, sheetName, questionColumn, idColumn, responseColumn, yesNoColumn, product, apiKey: clientKey } = req.body;
-  const apiKey = clientKey || SERVER_API_KEY;
+  const { filePath: rawFilePath, fileType, sheetName, questionColumn, idColumn, responseColumn, yesNoColumn, product } = req.body;
+  const apiKey = SERVER_API_KEY;
   if (!apiKey) return res.status(400).json({ error: 'Anthropic API key required' });
   if (!rawFilePath) return res.status(400).json({ error: 'No file specified' });
   let filePath;
@@ -1730,15 +1828,16 @@ app.post('/api/process/save-to-bank', (req, res) => {
 
 // --- Atlassian API Helpers ---
 
-function atlassianRequest(urlPath) {
+function atlassianRequest(urlPath, creds) {
   return new Promise((resolve, reject) => {
-    const url = new URL(urlPath, ATLASSIAN_BASE);
+    const c = creds || { base: ATLASSIAN_BASE, auth: ATLASSIAN_AUTH };
+    const url = new URL(urlPath, c.base);
     const options = {
       hostname: url.hostname,
       path: url.pathname + url.search,
       method: 'GET',
       headers: {
-        'Authorization': `Basic ${ATLASSIAN_AUTH}`,
+        'Authorization': `Basic ${c.auth}`,
         'Accept': 'application/json'
       }
     };
@@ -1757,17 +1856,18 @@ function atlassianRequest(urlPath) {
   });
 }
 
-async function searchConfluence(query, limit = 5) {
+async function searchConfluence(query, limit = 5, creds) {
   try {
     // Escape double quotes to prevent CQL injection
     const safeQuery = (query || '').replace(/"/g, '\\"').substring(0, 200);
     const cql = encodeURIComponent(`siteSearch ~ "${safeQuery}"`);
-    const data = await atlassianRequest(`/wiki/rest/api/content/search?cql=${cql}&limit=${limit}&expand=body.view`);
+    const c = creds || { base: ATLASSIAN_BASE, auth: ATLASSIAN_AUTH };
+    const data = await atlassianRequest(`/wiki/rest/api/content/search?cql=${cql}&limit=${limit}&expand=body.view`, c);
     if (data.results) {
       return data.results.map(r => ({
         title: r.title,
         space: r._expandable?.space?.split('/')?.pop() || '',
-        url: `${ATLASSIAN_BASE}/wiki${r._links?.webui || ''}`,
+        url: `${c.base}/wiki${r._links?.webui || ''}`,
         excerpt: (r.body?.view?.value || '')
           .replace(/<[^>]+>/g, ' ')
           .replace(/\s+/g, ' ')
@@ -1782,10 +1882,10 @@ async function searchConfluence(query, limit = 5) {
   }
 }
 
-async function searchJira(query, limit = 10) {
+async function searchJira(query, limit = 10, creds) {
   try {
     const jql = encodeURIComponent(query);
-    const data = await atlassianRequest(`/rest/api/3/search/jql?jql=${jql}&maxResults=${limit}&fields=summary,status,assignee,priority,description,updated`);
+    const data = await atlassianRequest(`/rest/api/3/search/jql?jql=${jql}&maxResults=${limit}&fields=summary,status,assignee,priority,description,updated`, creds);
     if (data.issues) {
       return data.issues.map(issue => ({
         key: issue.key,
@@ -1809,34 +1909,38 @@ async function searchJira(query, limit = 10) {
 
 // API endpoints for Confluence/Jira search from the UI
 app.get('/api/confluence/search', async (req, res) => {
-  const results = await searchConfluence(req.query.q || '', parseInt(req.query.limit) || 5);
+  const creds = getAtlCreds(req.user?.username, req.user?.role);
+  const results = await searchConfluence(req.query.q || '', parseInt(req.query.limit) || 5, creds);
   res.json(results);
 });
 
 app.get('/api/jira/search', async (req, res) => {
   // Build JQL from safe discrete params — do not accept raw jql from client
+  const creds = getAtlCreds(req.user?.username, req.user?.role);
   const status = sanitizeJql(req.query.status || '');
   const assignee = sanitizeJql(req.query.assignee || '');
   const text = sanitizeJql(req.query.q || '');
   const limit = Math.min(parseInt(req.query.limit) || 10, 50);
-  let jql = `project = ${JIRA_PROJECT}`;
+  let jql = `project = ${creds.project}`;
   if (status) jql += ` AND status = "${status}"`;
   if (assignee) jql += ` AND assignee = "${assignee}"`;
   if (text) jql += ` AND text ~ "${text}"`;
   jql += ' ORDER BY updated DESC';
-  const results = await searchJira(jql, limit);
+  const results = await searchJira(jql, limit, creds);
   res.json(results);
 });
 
 // --- Jira single ticket detail ---
 app.get('/api/jira/ticket/:key', async (req, res) => {
   try {
+    const creds = getAtlCreds(req.user?.username, req.user?.role);
     const rawKey = (req.params.key || '').trim();
     if (!/^[A-Z]+-\d+$/i.test(rawKey)) return res.status(400).json({ error: 'Invalid ticket key' });
     const safeKey = rawKey.toUpperCase();
     const jql = encodeURIComponent(`key = ${safeKey}`);
     const data = await atlassianRequest(
-      `/rest/api/3/search/jql?jql=${jql}&maxResults=1&fields=summary,status,assignee,reporter,priority,duedate,created,updated,description,comment`
+      `/rest/api/3/search/jql?jql=${jql}&maxResults=1&fields=summary,status,assignee,reporter,priority,duedate,created,updated,description,comment`,
+      creds
     );
     const issue = data.issues?.[0];
     if (!issue) return res.json({ error: 'Not found' });
@@ -1861,7 +1965,7 @@ app.get('/api/jira/ticket/:key', async (req, res) => {
       updated: issue.fields?.updated || '',
       description: desc,
       comments,
-      url: `${ATLASSIAN_BASE}/browse/${issue.key}`
+      url: `${creds.base}/browse/${issue.key}`
     });
   } catch (err) {
     res.json({ error: safeError(err) });
@@ -1871,9 +1975,11 @@ app.get('/api/jira/ticket/:key', async (req, res) => {
 // --- Jira statuses endpoint ---
 app.get('/api/jira/statuses', async (req, res) => {
   try {
-    const jqlEnc = encodeURIComponent(`project = ${JIRA_PROJECT} ORDER BY updated DESC`);
+    const creds = getAtlCreds(req.user?.username, req.user?.role);
+    const jqlEnc = encodeURIComponent(`project = ${creds.project} ORDER BY updated DESC`);
     const data = await atlassianRequest(
-      `/rest/api/3/search/jql?jql=${jqlEnc}&maxResults=50&fields=status`
+      `/rest/api/3/search/jql?jql=${jqlEnc}&maxResults=50&fields=status`,
+      creds
     );
     const statuses = new Map();
     (data.issues || []).forEach(i => {
@@ -1887,9 +1993,11 @@ app.get('/api/jira/statuses', async (req, res) => {
 // --- Jira issue types endpoint ---
 app.get('/api/jira/issuetypes', async (req, res) => {
   try {
-    const jqlEnc = encodeURIComponent(`project = ${JIRA_PROJECT} ORDER BY updated DESC`);
+    const creds = getAtlCreds(req.user?.username, req.user?.role);
+    const jqlEnc = encodeURIComponent(`project = ${creds.project} ORDER BY updated DESC`);
     const data = await atlassianRequest(
-      `/rest/api/3/search/jql?jql=${jqlEnc}&maxResults=50&fields=issuetype`
+      `/rest/api/3/search/jql?jql=${jqlEnc}&maxResults=50&fields=issuetype`,
+      creds
     );
     const types = new Set();
     (data.issues || []).forEach(i => {
@@ -1902,10 +2010,11 @@ app.get('/api/jira/issuetypes', async (req, res) => {
 
 // --- Jira Kanban board endpoint ---
 app.get('/api/jira/board', async (req, res) => {
+  const creds = getAtlCreds(req.user?.username, req.user?.role);
   const assignee = sanitizeJql(req.query.assignee || '');
   const issueType = sanitizeJql(req.query.issueType || '');
   const status = sanitizeJql(req.query.status || 'all');
-  let jql = `project = ${JIRA_PROJECT}`;
+  let jql = `project = ${creds.project}`;
   if (assignee) jql += ` AND assignee = "${assignee}"`;
   if (issueType) jql += ` AND issuetype = "${issueType}"`;
   if (status !== 'all') jql += ` AND status = "${status}"`;
@@ -1913,7 +2022,8 @@ app.get('/api/jira/board', async (req, res) => {
   try {
     const jqlEnc = encodeURIComponent(jql);
     const data = await atlassianRequest(
-      `/rest/api/3/search/jql?jql=${jqlEnc}&maxResults=50&fields=summary,status,assignee,priority,duedate,created,updated,labels,issuetype`
+      `/rest/api/3/search/jql?jql=${jqlEnc}&maxResults=50&fields=summary,status,assignee,priority,duedate,created,updated,labels,issuetype`,
+      creds
     );
     const columns = { backlog: [], assigned: [], inprogress: [], done: [] };
     (data.issues || []).forEach(issue => {
@@ -1932,7 +2042,7 @@ app.get('/api/jira/board', async (req, res) => {
         updated: issue.fields?.updated || '',
         labels: issue.fields?.labels || [],
         issueType: issue.fields?.issuetype?.name || '',
-        url: `${ATLASSIAN_BASE}/browse/${issue.key}`
+        url: `${creds.base}/browse/${issue.key}`
       };
       if (statusCat === 'done') columns.done.push(ticket);
       else if (statusCat === 'indeterminate' || /progress|assigned|review/i.test(statusName)) columns.inprogress.push(ticket);
@@ -1948,9 +2058,11 @@ app.get('/api/jira/board', async (req, res) => {
 // --- Jira assignees endpoint ---
 app.get('/api/jira/assignees', async (req, res) => {
   try {
-    const jqlEnc = encodeURIComponent(`project = ${JIRA_PROJECT} ORDER BY updated DESC`);
+    const creds = getAtlCreds(req.user?.username, req.user?.role);
+    const jqlEnc = encodeURIComponent(`project = ${creds.project} ORDER BY updated DESC`);
     const data = await atlassianRequest(
-      `/rest/api/3/search/jql?jql=${jqlEnc}&maxResults=50&fields=assignee`
+      `/rest/api/3/search/jql?jql=${jqlEnc}&maxResults=50&fields=assignee`,
+      creds
     );
     const names = new Set();
     (data.issues || []).forEach(i => {
@@ -1963,11 +2075,12 @@ app.get('/api/jira/assignees', async (req, res) => {
 
 // --- Jira tickets list endpoint ---
 app.get('/api/jira/tickets', async (req, res) => {
+  const creds = getAtlCreds(req.user?.username, req.user?.role);
   const status = sanitizeJql(req.query.status || 'all');
   const assignee = sanitizeJql(req.query.assignee || '');
   const issueType = sanitizeJql(req.query.issueType || '');
   const limit = Math.min(parseInt(req.query.limit) || 30, 100);
-  let jql = `project = ${JIRA_PROJECT}`;
+  let jql = `project = ${creds.project}`;
   if (status === 'open') jql += ' AND statusCategory != Done';
   else if (status === 'done') jql += ' AND statusCategory = Done';
   else if (status && status !== 'all') jql += ` AND status = "${status}"`;
@@ -1977,7 +2090,8 @@ app.get('/api/jira/tickets', async (req, res) => {
   try {
     const jqlEnc = encodeURIComponent(jql);
     const data = await atlassianRequest(
-      `/rest/api/3/search/jql?jql=${jqlEnc}&maxResults=${limit}&fields=summary,status,assignee,priority,duedate,created,updated`
+      `/rest/api/3/search/jql?jql=${jqlEnc}&maxResults=${limit}&fields=summary,status,assignee,priority,duedate,created,updated`,
+      creds
     );
     const tickets = (data.issues || []).map(issue => ({
       key: issue.key,
@@ -1989,7 +2103,7 @@ app.get('/api/jira/tickets', async (req, res) => {
       duedate: issue.fields?.duedate || null,
       created: issue.fields?.created || '',
       updated: issue.fields?.updated || '',
-      url: `${ATLASSIAN_BASE}/browse/${issue.key}`
+      url: `${creds.base}/browse/${issue.key}`
     }));
     res.json(tickets);
   } catch (err) {
@@ -1999,6 +2113,7 @@ app.get('/api/jira/tickets', async (req, res) => {
 
 // --- Jira Calendar endpoint ---
 app.get('/api/jira/calendar', async (req, res) => {
+  const creds = getAtlCreds(req.user?.username, req.user?.role);
   const month = req.query.month || new Date().toISOString().slice(0, 7); // YYYY-MM
   const field = req.query.field || 'duedate'; // duedate or created
   const [year, mon] = month.split('-').map(Number);
@@ -2008,15 +2123,16 @@ app.get('/api/jira/calendar', async (req, res) => {
 
   let jql;
   if (field === 'duedate') {
-    jql = `project = ${JIRA_PROJECT} AND duedate >= "${startDate}" AND duedate <= "${endDate}" ORDER BY duedate ASC`;
+    jql = `project = ${creds.project} AND duedate >= "${startDate}" AND duedate <= "${endDate}" ORDER BY duedate ASC`;
   } else {
-    jql = `project = ${JIRA_PROJECT} AND created >= "${startDate}" AND created <= "${endDate}" ORDER BY created ASC`;
+    jql = `project = ${creds.project} AND created >= "${startDate}" AND created <= "${endDate}" ORDER BY created ASC`;
   }
 
   try {
     const jqlEnc = encodeURIComponent(jql);
     const data = await atlassianRequest(
-      `/rest/api/3/search/jql?jql=${jqlEnc}&maxResults=100&fields=summary,status,assignee,priority,duedate,created,updated,issuetype`
+      `/rest/api/3/search/jql?jql=${jqlEnc}&maxResults=100&fields=summary,status,assignee,priority,duedate,created,updated,issuetype`,
+      creds
     );
     const tickets = (data.issues || []).map(issue => ({
       key: issue.key,
@@ -2038,10 +2154,11 @@ app.get('/api/jira/calendar', async (req, res) => {
     // Fallback: fetch by created if duedate query fails
     try {
       const fallbackJql = encodeURIComponent(
-        `project = ${JIRA_PROJECT} AND created >= "${startDate}" AND created <= "${endDate}" ORDER BY created ASC`
+        `project = ${creds.project} AND created >= "${startDate}" AND created <= "${endDate}" ORDER BY created ASC`
       );
       const data = await atlassianRequest(
-        `/rest/api/3/search/jql?jql=${fallbackJql}&maxResults=100&fields=summary,status,assignee,priority,duedate,created,updated,issuetype`
+        `/rest/api/3/search/jql?jql=${fallbackJql}&maxResults=100&fields=summary,status,assignee,priority,duedate,created,updated,issuetype`,
+        creds
       );
       const tickets = (data.issues || []).map(issue => ({
         key: issue.key,
@@ -2350,7 +2467,7 @@ async function runMigJob(job, { apiKey, sourceFilePath, targetFilePath, targetFi
 }
 
 app.post('/api/migrate', aiLimiter, upload.fields([{ name: 'sourceFile' }, { name: 'targetFile' }]), (req, res) => {
-  const apiKey = req.body.apiKey || SERVER_API_KEY;
+  const apiKey = SERVER_API_KEY;
   if (!apiKey) return res.status(400).json({ error: 'API key required' });
   if (!req.files?.sourceFile?.[0] || !req.files?.targetFile?.[0]) {
     return res.status(400).json({ error: 'Both source and target files required' });
@@ -3284,17 +3401,22 @@ app.post('/api/bank/save-answer', (req, res) => {
 app.get('/api/debug/bank-stats', async (req, res) => {
   const categories = readMarkdownFiles(path.join(BANK_ROOT, 'categories'));
   const policies = readMarkdownFiles(path.join(BANK_ROOT, 'policies'));
-  const products = readMarkdownFiles(path.join(BANK_ROOT, 'products'));
+  const productFiles = readMarkdownFiles(path.join(BANK_ROOT, 'products'));
   const pastQ = readMarkdownFiles(path.join(BANK_ROOT, 'past-questionnaires'));
   const frameworks = readMarkdownFiles(path.join(BANK_ROOT, 'frameworks'));
   const clients = readMarkdownFiles(path.join(BANK_ROOT, 'clients'));
   const imports = readMarkdownFiles(path.join(BANK_ROOT, 'imports'));
+  // Count product folders (matches Products tab) instead of markdown files
+  const productsDir = path.join(BANK_ROOT, 'products');
+  const productCount = fs.existsSync(productsDir)
+    ? fs.readdirSync(productsDir, { withFileTypes: true }).filter(e => e.isDirectory() && !e.name.startsWith('_')).length
+    : 0;
   const kb = await loadKnowledgeBase('');
   res.json({
-    files: { categories: categories.length, policies: policies.length, products: products.length, pastQuestionnaires: pastQ.length, frameworks: frameworks.length, clients: clients.length, imports: imports.length },
-    totalFiles: categories.length + policies.length + products.length + pastQ.length + frameworks.length + clients.length + imports.length,
+    files: { categories: categories.length, policies: policies.length, products: productCount, pastQuestionnaires: pastQ.length, frameworks: frameworks.length, clients: clients.length, imports: imports.length },
+    totalFiles: categories.length + policies.length + productFiles.length + pastQ.length + frameworks.length + clients.length + imports.length,
     knowledgeBaseChars: kb.length,
-    fileList: [...categories, ...policies, ...products, ...pastQ, ...frameworks, ...clients, ...imports].map(f => f.file)
+    fileList: [...categories, ...policies, ...productFiles, ...pastQ, ...frameworks, ...clients, ...imports].map(f => f.file)
   });
 });
 

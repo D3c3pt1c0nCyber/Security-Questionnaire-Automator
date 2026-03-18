@@ -11,21 +11,21 @@
 </head>
 <body>
 <aside class="sb" id="sb"><div id="sbResize" class="sb-resize"></div>
-<div class="sb-brand"><img class="sb-logo" src="logo.png" alt="Logo"><div><div class="sb-brand-text">Security QA</div><div class="sb-brand-sub">Questionnaire Automator</div></div></div>
+<div class="sb-brand"><div class="sb-logo-wrap"><img class="sb-logo" src="logo.png" alt="Logo"></div><div style="flex:1"><div class="sb-brand-text">Security QA</div><div class="sb-brand-sub">Questionnaire Automator</div></div><div class="theme-toggle" style="margin-left:auto;flex-shrink:0"><button id="thDark" title="Dark mode"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg></button><button id="thLight" title="Light mode"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg></button></div></div>
 <div class="sb-top">
 <div class="sb-nav">
-<div class="sb-nav-item on"><span class="sb-av"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></span>Chat</div>
+<div class="sb-nav-item on"><span class="sb-av"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></span><span class="sb-label">Chat</span></div>
 <div class="sb-hist" id="histList">
 <div class="sb-hist-toggle open" id="histToggle"><svg class="sb-hist-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg><span class="sb-hist-label">Chats</span><button class="sb-hist-plus" title="New chat">+</button></div>
 <div class="sb-hist-body" id="histBody"></div>
 </div>
 <div class="sb-section">Tools</div>
-<div class="sb-nav-item"><span class="sb-av"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg></span>Batch</div>
-<div class="sb-nav-item"><span class="sb-av"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>Import</div>
-<div class="sb-nav-item"><span class="sb-av"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg></span>HECVAT</div>
+<div class="sb-nav-item"><span class="sb-av"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg></span><span class="sb-label">Batch</span></div>
+<div class="sb-nav-item"><span class="sb-av"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span><span class="sb-label">Import</span></div>
+<div class="sb-nav-item"><span class="sb-av"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg></span><span class="sb-label">HECVAT</span></div>
 <div class="sb-section">Integrations</div>
-<div class="sb-nav-item"><span class="sb-av"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg></span>Jira</div>
-<div class="sb-nav-item"><span class="sb-av"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></span>Admin</div>
+<div class="sb-nav-item"><span class="sb-av"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14.5 0.5 L21.5 0.5 Q22.5 0.5 22.5 1.5 L22.5 8.5 Q22.5 9.5 21.5 9.5 L17 9.5 A3.5 3.5 0 0 0 13.5 6 L13.5 1.5 Q13.5 0.5 14.5 0.5 Z" fill="#2684FF"/><path d="M8 7 L15 7 Q16 7 16 8 L16 15 Q16 16 15 16 L10.5 16 A3.5 3.5 0 0 0 7 12.5 L7 8 Q7 7 8 7 Z" fill="#2684FF"/><path d="M1.5 13.5 L8.5 13.5 Q9.5 13.5 9.5 14.5 L9.5 21.5 Q9.5 22.5 8.5 22.5 L4 22.5 A3.5 3.5 0 0 0 0.5 19 L0.5 14.5 Q0.5 13.5 1.5 13.5 Z" fill="#2684FF"/></svg></span><span class="sb-label">Jira</span></div>
+<div class="sb-nav-item"><span class="sb-av"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></span><span class="sb-label">Admin</span></div>
 </div>
 </div>
 <div class="sb-foot">
@@ -55,11 +55,6 @@
 </aside>
 <div class="mn">
 <div class="top"><div class="top-l"><button class="ham"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg></button></div><div class="top-r"><span class="pill cf"><span class="dot"></span>Confluence</span><span class="pill jr"><span class="dot"></span>Jira</span><span class="pill lc"><span class="dot"></span>Local</span><select class="p-sel" id="chatProduct"><option value="">All Products</option></select>
-<div class="theme-toggle">
-<button id="thDark" title="Dark mode"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg></button>
-<button id="thLight" title="Light mode"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg></button>
-<button id="thSys" title="System theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></button>
-</div>
 </div></div>
 <div class="pn on" id="chatPanel"><div class="ch-scroll" id="chScr"><div class="ch-inner" id="chMsg"><div class="welcome" id="wel"><img class="w-logo" src="logo.png" alt="Logo"><h2>Security Questionnaire Assistant</h2><p>Connected to Confluence, Jira, and your local answer bank. Ask anything about your security posture.</p><div class="sugs"><div class="sug">What encryption do we use for data at rest and in transit?</div><div class="sug">Show me open security questionnaire tickets in Jira</div><div class="sug">Find our incident response policy on Confluence</div><div class="sug">Draft a HECVAT answer about multi-factor authentication</div></div></div></div></div><div class="sts" id="chSts"><div class="spin"></div><span id="chStsTx">Searching...</span></div><div class="att-bar" id="chAtt"></div><div class="inp-area"><div class="inp-wrap"><div class="inp-box"><button class="ib at" title="Attach"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg></button><textarea id="chIn" placeholder="Ask anything" rows="1"></textarea><button class="ib sd" id="chSnd" title="Send"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 18.5l-1.5-4.5L3 12.5l13-9-4.5 13.5-2.5-3.5z"/></svg></button></div><div class="inp-ft" id="inFt"></div></div></div><input type="file" id="chFI" multiple accept=".xlsx,.xls,.csv,.pdf,.docx,.pptx,.json,.txt,.md,.html,.htm,.xml,.rtf"></div>
 <div class="pn bp" id="uploadPanel"><div class="bi"><div class="bc"><h2><span class="step">1</span>Upload Questionnaire</h2><div class="dz" id="dropZone"><div class="dz-spin"></div><p class="dz-ldtxt" style="display:none;color:var(--ac);font-size:12px;font-weight:500">Uploading...</p><div class="di">&#128196;</div><p>Drag & drop a file here, or click to browse</p><div class="sup">Excel, CSV, PDF, Word, PowerPoint, JSON, Text, HTML, XML, RTF</div><div class="fn" id="fileName"></div><input type="file" id="fileInput" accept=".xlsx,.xls,.csv,.pdf,.docx,.pptx,.json,.txt,.md,.html,.htm,.xml,.rtf"></div></div><div class="bc" id="configCard"><h2><span class="step">2</span>Configure</h2><div id="fileTypeBadge" style="margin-bottom:10px"></div><div id="spreadsheetConfig"><div class="fr"><div class="fg"><label>Sheet</label><select class="bsl" id="sheetSelect"></select></div><div class="fg"><label>Product</label><select class="bsl" id="productSelect"><option value="">All</option></select></div></div><div class="fr"><div class="fg"><label>Question Column</label><select class="bsl" id="questionCol"></select></div><div class="fg"><label>ID Column</label><select class="bsl" id="idCol"></select></div></div><div class="fr"><div class="fg"><label>Response Column <span style="font-size:9px;color:var(--tx3)">(type or pick)</span></label><input class="bsl" type="text" id="responseCol" list="responseColList" placeholder="Auto-detect"><datalist id="responseColList"></datalist></div><div class="fg"><label>Yes/No Column <span style="font-size:9px;color:var(--tx3)">(type or pick)</span></label><input class="bsl" type="text" id="ynCol" list="ynColList" placeholder="None"><datalist id="ynColList"></datalist></div></div><div id="previewSection" style="margin-top:10px"><label style="font-size:10px;color:var(--tx3);display:block;margin-bottom:4px">Preview</label><div class="tw"><table id="previewTable"></table></div></div></div><div id="documentConfig"><div class="fr"><div class="fg"><label>Product</label><select class="bsl" id="docProductSelect"><option value="">All</option></select></div><div class="fg" id="pageCountGroup"><label>Pages</label><input class="bsl" type="text" id="pageCount" disabled></div></div><label style="font-size:10px;color:var(--tx3);display:block;margin:6px 0 4px">Preview</label><div class="dp" id="docPreview"></div></div><div class="fr" style="margin-top:10px;border-top:1px solid var(--bd);padding-top:10px"><div class="fg"><label>Framework</label><select class="bsl" id="batchFramework"><option value="">None (Custom)</option></select></div><div class="fg"><label>Version</label><select class="bsl" id="batchVersion"><option value="">—</option></select></div></div><div style="display:flex;align-items:center;gap:8px;margin-top:8px"><input type="checkbox" id="autoSaveBank" checked style="accent-color:var(--ac)"><label for="autoSaveBank" style="font-size:11px;color:var(--tx2);cursor:pointer">Auto-save completed questionnaire to answer bank</label></div><div style="margin-top:14px;display:flex;justify-content:flex-end;gap:8px"><button class="bb sec" data-action="resetUp">Cancel</button><button class="bb" id="processBtn">Process Questionnaire</button></div></div><div class="bc prg" id="progressSection"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><h2 style="margin:0">Processing</h2><button id="cancelBatchBtn" class="cancel-btn" style="background:none;border:1px solid var(--rd);color:var(--rd);font-size:11px;padding:4px 10px;border-radius:6px;cursor:pointer;font-family:var(--f)">&#x2715; Cancel</button></div><div class="pb"><div class="pf" id="progressBar"></div></div><div class="pt" id="progressText">Starting...</div><div class="pl" id="progressLog"></div></div><div class="bc res" id="resultsSection"><h2>Results</h2><div class="sr"><div class="sc t"><div class="n" id="statTotal">0</div><div class="l">Total</div></div><div class="sc h"><div class="n" id="statHigh">0</div><div class="l">High</div></div><div class="sc m"><div class="n" id="statMedium">0</div><div class="l">Medium</div></div><div class="sc w"><div class="n" id="statLow">0</div><div class="l">Review</div></div></div><div id="flagSummary"></div><div class="fb"><button class="fbtn on" data-filter="all">All</button><button class="fbtn" data-filter="high">High</button><button class="fbtn" data-filter="medium">Medium</button><button class="fbtn" data-filter="low">Low</button><button class="fbtn" data-filter="flagged" style="border-color:var(--rd)">Flagged</button></div><div class="tw"><table><thead><tr><th>ID</th><th>Question</th><th>Answer</th><th>Source</th><th>Conf.</th></tr></thead><tbody id="resultsBody"></tbody></table></div><div class="abr"><button class="bb sec" data-action="resetUp">New</button><button class="bb" id="saveBankBtn" style="background:var(--gn)">Save to Bank</button><button class="bb dl" data-action="dlFile">Download Excel</button></div></div></div></div>
@@ -344,7 +339,7 @@ User Management
 <option value="user">User</option>
 <option value="admin">Admin</option>
 </select></div>
-<div style="display:flex;flex-direction:column;justify-content:flex-end;padding-bottom:2px">
+<div id="newCanAdminWrap" style="display:none;flex-direction:column;justify-content:flex-end;padding-bottom:2px">
 <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--tx2);cursor:pointer">
 <input type="checkbox" id="newCanAdmin"> Can access Admin tab
 </label>
@@ -375,11 +370,10 @@ User Management
 <option value="user">User</option>
 <option value="admin">Admin</option>
 </select></div>
-<div style="margin-bottom:10px">
+<div id="editCanAdminWrap" style="display:none;margin-bottom:10px">
 <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--tx2);cursor:pointer">
 <input type="checkbox" id="editCanAdmin"> Can access Admin tab
 </label>
-<div style="font-size:10px;color:var(--tx3);margin-top:4px">Admins always have admin access.</div>
 </div>
 <div style="margin-bottom:14px"><label style="font-size:11px;color:var(--tx3);display:block;margin-bottom:3px">New Password (leave blank to keep current)</label>
 <input class="bsl" type="password" id="editPassword" placeholder="••••••••" style="width:100%;box-sizing:border-box"></div>
@@ -403,11 +397,15 @@ User Management
 <label>Answer (edit to correct)</label>
 <textarea id="saveA" rows="5"></textarea>
 <div style="display:flex;gap:8px;">
-<div style="flex:1"><label>Category</label><select id="saveCat"></select></div>
-<div style="flex:1"><label>Product (optional)</label><select id="saveProd"><option value="">Org-wide</option></select></div>
+<div style="flex:1">
+  <label>Category</label>
+  <select id="saveCat"></select>
+  <input id="saveCatNew" type="text" placeholder="New category name…" style="display:none;margin-top:6px;width:100%;background:var(--sb);border:1px solid var(--bd);border-radius:6px;padding:8px;color:var(--tx);font-family:var(--f);font-size:12px;outline:none;box-sizing:border-box">
+</div>
+<div style="flex:1"><label>Product (optional)</label><select id="saveProd"></select></div>
 </div>
 <div class="save-btns">
-<button class="save-cancel" data-action="closeSaveModal">Cancel</button>
+<button class="bb sec" data-action="closeSaveModal">Cancel</button>
 <button class="bb" data-action="doSaveAnswer">Save to Bank</button>
 </div>
 <div class="save-res" id="saveRes"></div>
@@ -417,6 +415,7 @@ User Management
 <div id="idleWarn"><div id="idleWarn-title">Session expiring</div><div id="idleWarn-body">You'll be logged out in <strong id="idleCountdown">60</strong>s due to inactivity.</div><button id="idleWarnBtn">Stay logged in</button></div>
 <div id="loginOverlay"><div class="login-card">
 <div class="login-logo"><img src="logo.png" alt="Logo"></div>
+<div class="login-title">Security Questionnaire Automator</div>
 <p class="login-sub">Authenticate to access the dashboard</p>
 <div class="login-field">
 <label for="loginUsername">Username</label>

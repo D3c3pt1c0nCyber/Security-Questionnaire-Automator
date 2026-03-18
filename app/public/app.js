@@ -3,6 +3,11 @@
 let _sessionToken = localStorage.getItem('sq_session_token') || null;
 let _currentUser = null; // { username, role, canAccessAdmin }
 
+function userKey(key) {
+  const u = _currentUser && _currentUser.username;
+  return u ? key + '_' + u : key;
+}
+
 function authHeaders(headers = {}) {
   if (_sessionToken) headers['X-Session-Token'] = _sessionToken;
   return headers;
@@ -41,6 +46,20 @@ function hideLogin() {
 
 function applyUserPermissions(user) {
   _currentUser = user;
+  // Reload per-user state from namespaced keys
+  if (user) {
+    convs = JSON.parse(localStorage.getItem(userKey('sq_convs')) || '[]');
+    renderHist();
+    const savedModel = localStorage.getItem(userKey('sq_model'));
+    if (savedModel) chModel(savedModel);
+    // Restore active tab
+    const savedTab = localStorage.getItem(userKey('sq_active_tab'));
+    if (savedTab && savedTab !== 'chat') {
+      const tabMap = {chat:0,upload:1,import:2,migrate:3,calendar:4,admin:5};
+      const idx = tabMap[savedTab];
+      if (idx !== undefined) { const navItems = document.querySelectorAll('.sb-nav-item'); if (navItems[idx]) sw(savedTab, navItems[idx]); }
+    }
+  }
   // Admin nav tab — hide if user cannot access it
   const adminNavItem = document.querySelectorAll('.sb-nav-item')[5];
   if (adminNavItem) adminNavItem.style.display = user && user.canAccessAdmin === false ? 'none' : '';
@@ -164,6 +183,7 @@ window._hasServerApiKey = false;
   try {
     const r = await _origFetch('/api/auth-status');
     const d = await r.json();
+    window._hasServerApiKey = !!d.hasApiKey;
     if (d.required) {
       if (_sessionToken) {
         const t = await _origFetch('/api/me', {headers:{'X-Session-Token':_sessionToken}});
@@ -230,26 +250,26 @@ window._hasServerApiKey = false;
 
 })();
 
-let upFile=null,outFN='',allRes=[],chHist=[],chAtt=[],isStr=false,convs=JSON.parse(localStorage.getItem('sq_convs')||'[]'),curCID=null;
+let upFile=null,outFN='',allRes=[],chHist=[],chAtt=[],isStr=false,convs=[],curCID=null;
 const MN={'claude-opus-4-20250514':'Claude Opus 4','claude-sonnet-4-20250514':'Claude Sonnet 4','claude-haiku-4-5-20251001':'Claude Haiku 4.5'};
-const sk=localStorage.getItem('anthropic_api_key');if(sk){const apiInp=document.getElementById('apiKey');if(apiInp)apiInp.placeholder='API key saved — only enter to change'}setTimeout(()=>{if(window._hasServerApiKey){const apiInp=document.getElementById('apiKey');if(apiInp){apiInp.placeholder='Configured via server environment';apiInp.disabled=true}const lbl=document.querySelector('label[for="apiKey"],#apiKey')?.closest?.('.admin-field')?.querySelector?.('label');if(lbl)lbl.textContent='API Key (server-configured)'}},500)
+setTimeout(()=>{const apiInp=document.getElementById('apiKey');if(apiInp){if(window._hasServerApiKey){apiInp.placeholder='API key configured — enter to update';}}},500)
 const _modelNames={'claude-opus-4-6':'Claude Opus 4.6','claude-sonnet-4-6':'Claude Sonnet 4.6','claude-haiku-4-5-20251001':'Claude Haiku 4.5','claude-opus-4-20250514':'Claude Opus 4','claude-sonnet-4-20250514':'Claude Sonnet 4'};
 const sm=localStorage.getItem('sq_model')||'claude-sonnet-4-6';
 document.getElementById('modelSelect').value=sm;
 setTimeout(()=>{const ft=document.getElementById('inFt');if(ft)ft.textContent=`Using ${_modelNames[sm]||sm} \u00b7 Searches Confluence, Jira & local bank`},100);
-function chModel(m){localStorage.setItem('sq_model',m);const ft=document.getElementById('inFt');if(ft)ft.textContent=`Using ${_modelNames[m]||m} \u00b7 Searches Confluence, Jira & local bank`;const sb=document.getElementById('modelSelect');if(sb&&sb.value!==m)sb.value=m;const ad=document.getElementById('cfgAIModel');if(ad&&ad.value!==m)ad.value=m}
+function chModel(m){localStorage.setItem(userKey('sq_model'),m);const ft=document.getElementById('inFt');if(ft)ft.textContent=`Using ${_modelNames[m]||m} \u00b7 Searches Confluence, Jira & local bank`;const sb=document.getElementById('modelSelect');if(sb&&sb.value!==m)sb.value=m;const ad=document.getElementById('cfgAIModel');if(ad&&ad.value!==m)ad.value=m}
 function gMod(){return document.getElementById('modelSelect').value}
 function showResult(el,cls,msg){el.style.display='flex';el.className='admin-result '+cls;el.textContent=msg}
-function saveApiKey(){const k=document.getElementById('apiKey').value.trim();const res=document.getElementById('cfgApiResult');
+async function saveApiKey(){const k=document.getElementById('apiKey').value.trim();const res=document.getElementById('cfgApiResult');
 if(!k){showResult(res,'err','Please enter an API key');return}
-localStorage.setItem('anthropic_api_key',k);
-showResult(res,'ok','Claude API key saved successfully');
-document.getElementById('apiKey').value='';document.getElementById('apiKey').placeholder='API key saved — only enter to change';
-checkSystemStatus()}
-async function testApiKey(){const res=document.getElementById('cfgApiResult');const k=localStorage.getItem('anthropic_api_key');
-if(!k){showResult(res,'err','No API key saved. Enter and save one first.');return}
+showResult(res,'warn','Saving...');
+try{const r=await fetch('/api/admin/api-key',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:k})});const d=await r.json();
+if(d.success){window._hasServerApiKey=true;showResult(res,'ok','Claude API key saved — applies to all users');document.getElementById('apiKey').value='';document.getElementById('apiKey').placeholder='API key configured — enter to update';checkSystemStatus()}
+else{showResult(res,'err',d.error||'Failed to save')}}catch(e){showResult(res,'err',e.message)}}
+async function testApiKey(){const res=document.getElementById('cfgApiResult');
+if(!window._hasServerApiKey){showResult(res,'err','No API key configured. Enter and save one first.');return}
 showResult(res,'warn','Testing connection to Anthropic...');
-try{const r=await fetch('/api/test-api-key',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:k})});const d=await r.json();
+try{const r=await fetch('/api/test-api-key',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});const d=await r.json();
 if(d.success){showResult(res,'ok','Connected to Anthropic API — '+d.model)}
 else{showResult(res,'err',d.error||'Connection failed')}}catch(e){showResult(res,'err',e.message)}}
 const PRODUCT_LABELS={'EV+PD':'EV+/PD'};
@@ -260,7 +280,7 @@ setInterval(loadProducts,30000);
 // Auto-refresh active tab data every 30s
 setInterval(function(){
   if(!_sessionToken)return;
-  const tab=localStorage.getItem('sq_active_tab')||'chat';
+  const tab=localStorage.getItem(userKey('sq_active_tab'))||'chat';
   if(tab==='upload')ldBatchFw();
   else if(tab==='import')ldImpOpts();
   else if(tab==='migrate')ldMigFw();
@@ -298,7 +318,7 @@ async function delFWVersion(fwName,ver){if(!confirm(`Remove version "${ver}" fro
 async function updateJobsBadge(){try{const r=await fetch('/api/jobs');const js=await r.json();const running=js.filter(j=>j.status==='running');const badge=document.getElementById('jobsBadge');if(running.length>0){badge.style.display='block';document.getElementById('jobsBadgeTxt').textContent=running.length+' job'+(running.length>1?'s':'')+' running'}else{badge.style.display='none'}}catch{}}
 setInterval(updateJobsBadge,2000);
 // On load: cancel any stale localStorage job references that are no longer running
-(async()=>{for(const key of['sq_active_batch_job','sq_active_mig_job']){const id=localStorage.getItem(key);if(id){try{const r=await fetch('/api/jobs/'+id);const j=await r.json();if(!j||j.status!=='running')localStorage.removeItem(key)}catch{localStorage.removeItem(key)}}}updateJobsBadge()
+(async()=>{for(const key of['sq_active_batch_job','sq_active_mig_job']){const id=localStorage.getItem(userKey(key));if(id){try{const r=await fetch('/api/jobs/'+id);const j=await r.json();if(!j||j.status!=='running')localStorage.removeItem(userKey(key))}catch{localStorage.removeItem(userKey(key))}}}updateJobsBadge()
   // --- histBody: hitem click (loadConv) and hitem-del click (delConv) ---
   var histBody = document.getElementById('histBody');
   if (histBody) {
@@ -344,7 +364,7 @@ setInterval(updateJobsBadge,2000);
 
 })();
 renderHist();
-(function(){const saved=localStorage.getItem('sq_active_tab');if(saved&&saved!=='chat'){const tabMap={chat:0,upload:1,import:2,migrate:3,calendar:4,admin:5};const idx=tabMap[saved];if(idx!==undefined){const navItems=document.querySelectorAll('.sb-nav-item');if(navItems[idx])sw(saved,navItems[idx])}}
+(function(){/* active tab restore moved to applyUserPermissions so it runs after user is known */
   // --- histBody: hitem click (loadConv) and hitem-del click (delConv) ---
   var histBody = document.getElementById('histBody');
   if (histBody) {
@@ -389,22 +409,24 @@ renderHist();
   }
 
 })();
-function sw(mode,btn){localStorage.setItem('sq_active_tab',mode);document.querySelectorAll('.sb-nav-item').forEach(b=>b.classList.remove('on'));btn.classList.add('on');document.querySelectorAll('.pn').forEach(p=>p.classList.remove('on'));document.getElementById({chat:'chatPanel',upload:'uploadPanel',calendar:'calendarPanel',import:'importPanel',migrate:'migratePanel',admin:'adminPanel'}[mode]).classList.add('on');const mnEl=document.querySelector('.mn');mnEl.classList.toggle('no-top',mode!=='chat');mnEl.style.display=mode==='admin'?'none':'flex';const ht=document.getElementById('histToggle');const hb=document.getElementById('histBody');if(ht)ht.classList.toggle('open',mode==='chat');if(hb)hb.style.display=mode==='chat'?'':'none';if(mode==='calendar'){ldCal();ldAssignees();ldTickets();ldIssueTypes();ldStatuses();const hasAtl=localStorage.getItem('sq_atl_url')&&localStorage.getItem('sq_atl_email');updateJiraConnBadge(!!hasAtl,hasAtl?'Connected':'Not configured')}if(mode==='import')ldImpOpts();if(mode==='upload')ldBatchFw();if(mode==='migrate')ldMigFw();if(mode==='admin')loadAdminSettings()}
+function sw(mode,btn){localStorage.setItem(userKey('sq_active_tab'),mode);document.querySelectorAll('.sb-nav-item').forEach(b=>b.classList.remove('on'));btn.classList.add('on');document.querySelectorAll('.pn').forEach(p=>p.classList.remove('on'));document.getElementById({chat:'chatPanel',upload:'uploadPanel',calendar:'calendarPanel',import:'importPanel',migrate:'migratePanel',admin:'adminPanel'}[mode]).classList.add('on');const mnEl=document.querySelector('.mn');mnEl.classList.toggle('no-top',mode!=='chat');mnEl.style.display=mode==='admin'?'none':'flex';const ht=document.getElementById('histToggle');const hb=document.getElementById('histBody');if(ht)ht.classList.toggle('open',mode==='chat');if(hb)hb.style.display=mode==='chat'?'':'none';if(mode==='calendar'){ldCal();ldAssignees();ldTickets();ldIssueTypes();ldStatuses();const hasAtl=localStorage.getItem(userKey('sq_atl_url'))&&localStorage.getItem(userKey('sq_atl_email'));updateJiraConnBadge(!!hasAtl,hasAtl?'Connected':'Not configured')}if(mode==='import')ldImpOpts();if(mode==='upload')ldBatchFw();if(mode==='migrate')ldMigFw();if(mode==='admin')loadAdminSettings()}
 function toggleHist(){const ht=document.getElementById('histToggle');const hb=document.getElementById('histBody');if(ht&&hb){const open=ht.classList.toggle('open');hb.style.display=open?'':'none'}}
-function saveConv(){if(!chHist.length)return;const t=chHist[0]?.content?.substring(0,40)||'New chat';const id=curCID||Date.now().toString();const idx=convs.findIndex(c=>c.id===id);const cv={id,title:t,messages:chHist,date:new Date().toISOString()};if(idx>=0)convs[idx]=cv;else convs.unshift(cv);if(convs.length>20)convs.pop();localStorage.setItem('sq_convs',JSON.stringify(convs));curCID=id;renderHist()}
+function saveConv(){if(!chHist.length)return;const t=chHist[0]?.content?.substring(0,40)||'New chat';const id=curCID||Date.now().toString();const idx=convs.findIndex(c=>c.id===id);const cv={id,title:t,messages:chHist,date:new Date().toISOString()};if(idx>=0)convs[idx]=cv;else convs.unshift(cv);if(convs.length>20)convs.pop();localStorage.setItem(userKey('sq_convs'),JSON.stringify(convs));curCID=id;renderHist()}
 function loadConv(id){const c=convs.find(x=>x.id===id);if(!c)return;curCID=id;chHist=[...c.messages];const el=document.getElementById('chMsg');el.innerHTML='';c.messages.forEach(m=>appMsg(m.role,m.content,false));renderHist();document.getElementById('chScr').scrollTop=document.getElementById('chScr').scrollHeight}
-function delConv(id,e){e.stopPropagation();convs=convs.filter(c=>c.id!==id);localStorage.setItem('sq_convs',JSON.stringify(convs));if(curCID===id)newChat();else renderHist()}
+function delConv(id,e){e.stopPropagation();convs=convs.filter(c=>c.id!==id);localStorage.setItem(userKey('sq_convs'),JSON.stringify(convs));if(curCID===id)newChat();else renderHist()}
 function renderHist(){const el=document.getElementById('histBody');if(!el)return;if(!convs.length){el.innerHTML='<div style="padding:16px 12px;font-size:11px;color:var(--tx3);text-align:center">No conversations yet</div>';return}const now=new Date();const sod=d=>{const x=new Date(d);x.setHours(0,0,0,0);return x};const todayMs=sod(now).getTime();const grp=c=>{const d=sod(new Date(c.date)).getTime();const diff=(todayMs-d)/86400000;if(diff<1)return'Today';if(diff<2)return'Yesterday';if(diff<7)return'This past week';if(diff<30)return'This past month';return'Older'};const order=['Today','Yesterday','This past week','This past month','Older'];const groups={};convs.forEach(c=>{const g=grp(c);if(!groups[g])groups[g]=[];groups[g].push(c)});const itemHtml=c=>`<div class="hitem ${c.id===curCID?'on':''}" data-load-conv="${c.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg><span class="hitem-text">${esc(c.title)}</span><button class="hitem-del" data-del-conv="${c.id}">&times;</button></div>`;el.innerHTML=order.filter(g=>groups[g]).map(g=>`<div class="hitem-group">${g}</div>${groups[g].map(itemHtml).join('')}`).join('')}
 function newChat(){if(chHist.length)saveConv();chHist=[];curCID=null;document.getElementById('chMsg').innerHTML=`<div class="welcome" id="wel"><img class="w-logo" src="logo.png" alt="Logo"><h2>Security Questionnaire Assistant</h2><p>Connected to Confluence, Jira, and your local answer bank.</p><div class="sugs"><div class="sug">What encryption do we use for data at rest and in transit?</div><div class="sug">Show me open security questionnaire tickets in Jira</div><div class="sug">Find our incident response policy on Confluence</div><div class="sug">Draft a HECVAT answer about multi-factor authentication</div></div></div>`;renderHist();swTo('chat')}
 function uSug(el){document.getElementById('chIn').value=el.textContent;sendMsg()}
 function chKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg()}}
 function aRsz(el){el.style.height='auto';el.style.height=Math.min(el.scrollHeight,180)+'px'}
-function appMsg(role,content,anim=true){const el=document.getElementById('chMsg');const isU=role==='user';const d=document.createElement('div');d.className='msg';d.dataset.role=role;d.dataset.raw=content;if(!anim)d.style.animation='none';d.innerHTML=`<div class="mc"><div class="mr">${isU?'You':'Security Assistant'}</div><div class="mb">${isU?esc(content):fmtMd(content)}</div>${!isU?`<div class="mact"><button class="ma-btn" data-action="cpMsg" title="Copy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button><button class="ma-btn sv" data-action="openSave" title="Save to answer bank">Save</button></div>`:''}</div>`;el.appendChild(d);return d}
+const _mactHTML=`<div class="mact"><button class="ma-btn" data-action="cpMsg" title="Copy response"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>Copy</button><button class="ma-btn sv" data-action="openSave" title="Save to answer bank"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save to Bank</button></div>`;
+function addMsgActions(msgEl){if(!msgEl.querySelector('.mact'))msgEl.querySelector('.mc').insertAdjacentHTML('beforeend',_mactHTML)}
+function appMsg(role,content,anim=true){const el=document.getElementById('chMsg');const isU=role==='user';const d=document.createElement('div');d.className='msg';d.dataset.role=role;d.dataset.raw=content;if(!anim)d.style.animation='none';d.innerHTML=`<div class="mc"><div class="mr">${isU?'You':'Security Assistant'}</div><div class="mb">${isU?esc(content):fmtMd(content)}</div></div>`;el.appendChild(d);if(!isU)addMsgActions(d);return d}
 function cpMsg(b){const t=b.closest('.mc').querySelector('.mb').innerText;navigator.clipboard.writeText(t);b.classList.add('ok');b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>';setTimeout(()=>{b.classList.remove('ok');b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>'},2000)}
 async function hCF(fl){const atBtn=document.querySelector('.ib.at');if(atBtn){atBtn.style.opacity='.4';atBtn.style.pointerEvents='none'}for(const f of fl){const fd=new FormData();fd.append('file',f);try{const r=await fetch('/api/upload',{method:'POST',body:fd});const d=await r.json();if(!d.error){chAtt.push(d);rCAtt()}}catch(e){}}document.getElementById('chFI').value='';if(atBtn){atBtn.style.opacity='';atBtn.style.pointerEvents=''}}
 function rCAtt(){document.getElementById('chAtt').innerHTML=chAtt.map((f,i)=>`<div class="att-chip"><span class="att-ext">${(f.fileType||'').replace('.','')}</span><span>${esc(f.fileName)}</span><button class="att-x" data-att-idx="${i}">&times;</button></div>`).join('')}
-async function sendMsg(){const inp=document.getElementById('chIn');const msg=inp.value.trim();if(!msg||isStr)return;const ak=localStorage.getItem('anthropic_api_key')||'';if(!ak&&!window._hasServerApiKey){alert('Set your Claude API key in Admin → Authentication');return}const w=document.getElementById('wel');if(w)w.remove();appMsg('user',msg);chHist.push({role:'user',content:msg});inp.value='';inp.style.height='auto';const mel=document.getElementById('chMsg');const ar=document.createElement('div');ar.className='msg';ar.dataset.role='assistant';ar.innerHTML=`<div class="mc"><div class="mr">Security Assistant</div><div class="mb"><div class="typing"><span></span><span></span><span></span></div></div></div>`;mel.appendChild(ar);const bd=ar.querySelector('.mb');const scr=document.getElementById('chScr');scr.scrollTop=scr.scrollHeight;isStr=true;document.getElementById('chSnd').disabled=true;shSts('Searching Confluence & Jira...');
-try{const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:chHist,apiKey:ak,model:gMod(),product:document.getElementById('chatProduct').value,attachedFiles:chAtt,searchConfluence:document.getElementById('cfgSearchConf').checked,searchJira:document.getElementById('cfgSearchJira').checked})});const rd=res.body.getReader();const dec=new TextDecoder();let buf='',full='';while(true){const{value,done}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});const lns=buf.split('\n');buf=lns.pop();for(const ln of lns){if(ln.startsWith('data: ')){try{const ev=JSON.parse(ln.slice(6));if(ev.type==='text'){hdSts();full+=ev.text;bd.innerHTML=fmtMd(full);scr.scrollTop=scr.scrollHeight}else if(ev.type==='status'){shSts(ev.message)}else if(ev.type==='done'){hdSts();bd.innerHTML=fmtMd(full);const ac=document.createElement('div');ac.className='mact';ac.innerHTML=`<button class="ma-btn" data-action="cpMsg" title="Copy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button><button class="ma-btn sv" data-action="openSave" title="Save to answer bank">Save</button>`;ar.querySelector('.mc').appendChild(ac);ar.dataset.raw=full;ar.dataset.role='assistant'}else if(ev.type==='error'){hdSts();bd.innerHTML=`<span style="color:var(--rd)">Error: ${esc(ev.message)}</span>`}}catch{}}}}chHist.push({role:'assistant',content:full});saveConv()}catch(e){bd.innerHTML=`<span style="color:var(--rd)">${esc(e.message)}</span>`}
+async function sendMsg(){const inp=document.getElementById('chIn');const msg=inp.value.trim();if(!msg||isStr)return;if(!window._hasServerApiKey){alert('Set the Claude API key in Admin → Authentication');return}const w=document.getElementById('wel');if(w)w.remove();appMsg('user',msg);chHist.push({role:'user',content:msg});inp.value='';inp.style.height='auto';const mel=document.getElementById('chMsg');const ar=document.createElement('div');ar.className='msg';ar.dataset.role='assistant';ar.innerHTML=`<div class="mc"><div class="mr">Security Assistant</div><div class="mb"><div class="typing"><span></span><span></span><span></span></div></div></div>`;mel.appendChild(ar);const bd=ar.querySelector('.mb');const scr=document.getElementById('chScr');scr.scrollTop=scr.scrollHeight;isStr=true;document.getElementById('chSnd').disabled=true;shSts('Searching Confluence & Jira...');
+try{const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:chHist,model:gMod(),product:document.getElementById('chatProduct').value,attachedFiles:chAtt,searchConfluence:document.getElementById('cfgSearchConf').checked,searchJira:document.getElementById('cfgSearchJira').checked})});const rd=res.body.getReader();const dec=new TextDecoder();let buf='',full='';while(true){const{value,done}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});const lns=buf.split('\n');buf=lns.pop();for(const ln of lns){if(ln.startsWith('data: ')){try{const ev=JSON.parse(ln.slice(6));if(ev.type==='text'){hdSts();full+=ev.text;bd.innerHTML=fmtMd(full);scr.scrollTop=scr.scrollHeight}else if(ev.type==='status'){shSts(ev.message)}else if(ev.type==='done'){hdSts();bd.innerHTML=fmtMd(full);addMsgActions(ar);ar.dataset.raw=full;ar.dataset.role='assistant'}else if(ev.type==='error'){hdSts();bd.innerHTML=`<span style="color:var(--rd)">Error: ${esc(ev.message)}</span>`}}catch{}}}}chHist.push({role:'assistant',content:full});saveConv()}catch(e){bd.innerHTML=`<span style="color:var(--rd)">${esc(e.message)}</span>`}
 isStr=false;document.getElementById('chSnd').disabled=false;chAtt=[];rCAtt();scr.scrollTop=scr.scrollHeight}
 function shSts(m){document.getElementById('chStsTx').textContent=m;document.getElementById('chSts').classList.add('on')}
 function hdSts(){document.getElementById('chSts').classList.remove('on')}
@@ -417,7 +439,7 @@ if(cls==='src-policy'){return`<span title="Policy document" style="cursor:help;b
 return e}
 function fmtMd(t){
 // Split out sources section if present
-const showSources=localStorage.getItem('sq_cfgAutoSources')!=='false';
+const showSources=localStorage.getItem(userKey('sq_cfgAutoSources'))!=='false';
 let main=t,srcHtml='';
 const srcIdx=t.indexOf('---\n**Sources:');
 if(srcIdx===-1){const srcIdx2=t.indexOf('**Sources:');if(srcIdx2>-1){main=t.substring(0,srcIdx2);const srcText=t.substring(srcIdx2)
@@ -434,10 +456,10 @@ if(mTBox){mTBox.addEventListener('dragover',e=>{e.preventDefault();e.stopPropaga
 async function hFile(f){const dz=document.getElementById('dropZone');dz.classList.add('uploading');document.getElementById('fileName').textContent='';const fd=new FormData();fd.append('file',f);try{const r=await fetch('/api/upload',{method:'POST',body:fd});const d=await r.json();if(d.error){alert(d.error);return}upFile=d;document.getElementById('fileName').textContent=f.name;shCfg(d)}catch(e){alert(e.message)}finally{dz.classList.remove('uploading')}}
 function shCfg(d){document.getElementById('configCard').style.display='block';document.getElementById('fileTypeBadge').innerHTML=`<span class="ftb">${(d.fileType||'').replace('.','').toUpperCase()}</span> ${esc(d.fileName)}`;if(d.type==='spreadsheet'){document.getElementById('spreadsheetConfig').style.display='block';document.getElementById('documentConfig').style.display='none';const s=document.getElementById('sheetSelect');s.innerHTML='';d.sheets.forEach(sh=>{const o=document.createElement('option');o.value=sh.name;o.textContent=`${sh.name} (${sh.rowCount} rows)`;s.appendChild(o)});s.onchange=()=>updCols();updCols()}else{document.getElementById('spreadsheetConfig').style.display='none';document.getElementById('documentConfig').style.display='block';document.getElementById('docPreview').textContent=d.preview||'No preview';if(d.pageCount){document.getElementById('pageCountGroup').style.display='block';document.getElementById('pageCount').value=`${d.pageCount} pages`}}}
 function updCols(){const sn=document.getElementById('sheetSelect').value;const sh=upFile.sheets.find(s=>s.name===sn);if(!sh)return;const q=document.getElementById('questionCol'),i=document.getElementById('idCol'),rcInput=document.getElementById('responseCol'),ynInput=document.getElementById('ynCol'),rcList=document.getElementById('responseColList'),ynList=document.getElementById('ynColList');q.innerHTML='';i.innerHTML='';rcList.innerHTML='';ynList.innerHTML='';rcInput.value='';ynInput.value='';const ansColPat=/^(answer|response|reply|vendor.?response|assessment.?response|vendor.?answer|institution.?response)/i;const ynNamePat=/yes.?no|y\/n\b|comply|applicable|certif/i;const ynValPat=/^(yes|no|y|n|na|n\/a)$/i;sh.columns.forEach(c=>{const o1=document.createElement('option');o1.value=c;o1.textContent=c;if(/question|query|requirement|control|description/i.test(c))o1.selected=true;q.appendChild(o1);const o2=document.createElement('option');o2.value=c;o2.textContent=c;if(/id|number|#|ref|index/i.test(c))o2.selected=true;i.appendChild(o2);const o3=document.createElement('option');o3.value=c;rcList.appendChild(o3);if(ansColPat.test(c)&&!rcInput.value)rcInput.value=c;const previewVals=(sh.preview||[]).map(r=>String(r[c]||'').trim()).filter(v=>v.length>0);const isYnByName=ynNamePat.test(c);const isYnByVal=previewVals.length>0&&previewVals.every(v=>ynValPat.test(v));const o4=document.createElement('option');o4.value=c;ynList.appendChild(o4);if((isYnByName||isYnByVal)&&!ynInput.value)ynInput.value=c});const tb=document.getElementById('previewTable');if(!sh.preview.length){tb.innerHTML='<tr><td>No data</td></tr>';return}tb.innerHTML='<thead><tr>'+sh.columns.map(c=>`<th>${esc(c)}</th>`).join('')+'</tr></thead><tbody>'+sh.preview.map(r=>'<tr>'+sh.columns.map(c=>`<td>${esc(String(r[c]||''))}</td>`).join('')+'</tr>').join('')+'</tbody>'}
-async function startProc(){const ak=localStorage.getItem('anthropic_api_key')||'';if(!ak&&!window._hasServerApiKey){alert('Set your Claude API key in Admin → Authentication');return}const b=document.getElementById('processBtn');b.disabled=true;b.textContent='Processing...';document.getElementById('configCard').style.display='none';document.getElementById('progressSection').classList.add('vis');document.getElementById('progressLog').innerHTML='';gtAdd('batch','Batch Processing','upload');const bd={filePath:upFile.filePath,fileType:upFile.fileType||'.xlsx',sheetName:document.getElementById('sheetSelect')?.value,questionColumn:document.getElementById('questionCol')?.value,idColumn:document.getElementById('idCol')?.value,responseColumn:document.getElementById('responseCol')?.value||'',yesNoColumn:document.getElementById('ynCol')?.value||'',product:document.getElementById('productSelect')?.value||document.getElementById('docProductSelect')?.value,apiKey:ak};try{const r=await fetch('/api/process',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(bd)});const d=await r.json();if(d.error){lg('Error: '+d.error);gtError('batch',d.error);b.disabled=false;b.textContent='Process Questionnaire';batchErrReset(d.error);return}const jobId=d.jobId;localStorage.setItem('sq_active_batch_job',jobId);pollJob(jobId,'batch',(ev)=>{hPE(ev);if(ev.type==='progress')gtUpdate('batch',ev.percent,ev.step);if(ev.type==='complete'){gtDone('batch');localStorage.removeItem('sq_active_batch_job');b.disabled=false;b.textContent='Process Questionnaire'}if(ev.type==='error'){gtError('batch',ev.message);localStorage.removeItem('sq_active_batch_job');b.disabled=false;b.textContent='Process Questionnaire';batchErrReset(ev.message)}})}catch(e){lg('Error: '+e.message);gtError('batch',e.message);b.disabled=false;b.textContent='Process Questionnaire';batchErrReset(e.message)}}
+async function startProc(){if(!window._hasServerApiKey){alert('Set the Claude API key in Admin → Authentication');return}const b=document.getElementById('processBtn');b.disabled=true;b.textContent='Processing...';document.getElementById('configCard').style.display='none';document.getElementById('progressSection').classList.add('vis');document.getElementById('progressLog').innerHTML='';gtAdd('batch','Batch Processing','upload');const bd={filePath:upFile.filePath,fileType:upFile.fileType||'.xlsx',sheetName:document.getElementById('sheetSelect')?.value,questionColumn:document.getElementById('questionCol')?.value,idColumn:document.getElementById('idCol')?.value,responseColumn:document.getElementById('responseCol')?.value||'',yesNoColumn:document.getElementById('ynCol')?.value||'',product:document.getElementById('productSelect')?.value||document.getElementById('docProductSelect')?.value};try{const r=await fetch('/api/process',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(bd)});const d=await r.json();if(d.error){lg('Error: '+d.error);gtError('batch',d.error);b.disabled=false;b.textContent='Process Questionnaire';batchErrReset(d.error);return}const jobId=d.jobId;localStorage.setItem(userKey('sq_active_batch_job'),jobId);pollJob(jobId,'batch',(ev)=>{hPE(ev);if(ev.type==='progress')gtUpdate('batch',ev.percent,ev.step);if(ev.type==='complete'){gtDone('batch');localStorage.removeItem(userKey('sq_active_batch_job'));b.disabled=false;b.textContent='Process Questionnaire'}if(ev.type==='error'){gtError('batch',ev.message);localStorage.removeItem(userKey('sq_active_batch_job'));b.disabled=false;b.textContent='Process Questionnaire';batchErrReset(ev.message)}})}catch(e){lg('Error: '+e.message);gtError('batch',e.message);b.disabled=false;b.textContent='Process Questionnaire';batchErrReset(e.message)}}
 function batchErrReset(msg){const log=document.getElementById('progressLog');log.innerHTML+=`<div style="color:var(--rd);font-weight:600;margin-top:6px">&#9888; ${esc(msg||'Unknown error')} — returning to configuration in 4s...</div>`;log.scrollTop=log.scrollHeight;setTimeout(()=>_batchResetUI(),4000)}
 function _batchResetUI(){document.getElementById('progressSection').classList.remove('vis');document.getElementById('progressBar').style.width='0%';document.getElementById('progressLog').innerHTML='';document.getElementById('progressLog').dataset.logCount=0;document.getElementById('progressText').textContent='Starting...';document.getElementById('configCard').style.display='block';const b=document.getElementById('processBtn');b.disabled=false;b.textContent='Process Questionnaire'}
-function cancelBatch(){const jobId=localStorage.getItem('sq_active_batch_job');if(jobId){fetch('/api/jobs/'+jobId,{method:'DELETE'}).catch(()=>{});localStorage.removeItem('sq_active_batch_job')}gtError('batch','Cancelled');_batchResetUI()}
+function cancelBatch(){const jobId=localStorage.getItem(userKey('sq_active_batch_job'));if(jobId){fetch('/api/jobs/'+jobId,{method:'DELETE'}).catch(()=>{});localStorage.removeItem(userKey('sq_active_batch_job'))}gtError('batch','Cancelled');_batchResetUI()}
 async function pollJob(jobId,taskKey,onEvent){const pId=setInterval(async()=>{try{const r=await fetch('/api/jobs/'+jobId);if(!r.ok&&r.status!==404)return;// skip transient errors (429, 5xx), keep polling
 const j=await r.json();if(r.status===404){clearInterval(pId);onEvent({type:'error',message:'Job not found'});return}document.getElementById('progressBar').style.width=j.progress+'%';document.getElementById('progressText').textContent=j.step;if(j.logs?.length){const el=document.getElementById('progressLog');const lastShown=parseInt(el.dataset.logCount||0);j.logs.slice(lastShown).forEach(l=>lg(l.msg));el.dataset.logCount=j.logs.length}updateJobsBadge();if(j.status==='complete'){clearInterval(pId);onEvent({type:'complete',...j.result})}else if(j.status==='error'){clearInterval(pId);lg('ERROR: '+j.error);onEvent({type:'error',message:j.error})}}catch{}},3000)}
 function hPE(ev){switch(ev.type){case'progress':document.getElementById('progressBar').style.width=ev.percent+'%';document.getElementById('progressText').textContent=ev.step;lg(ev.step);break;case'batch_complete':lg(`Batch ${ev.batchNum}/${ev.totalBatches} done`);break;case'complete':outFN=ev.outputFile;allRes=ev.answers;shRes(ev);lg('Done!');if(document.getElementById('autoSaveBank')?.checked)saveProcToBank();break;case'error':lg('ERROR: '+ev.message);break}}
@@ -452,7 +474,7 @@ function updAnswer(el){const id=el.dataset.id;const item=allRes.find(a=>String(a
 function autoGrow(el){el.style.height='auto';el.style.height=Math.min(el.scrollHeight,160)+'px'}
 function fRes(l,b){document.querySelectorAll('#resultsSection .fbtn').forEach(x=>x.classList.remove('on'));b.classList.add('on');rRT(l==='all'?allRes:l==='flagged'?allRes.filter(a=>a.flags&&a.flags.length>0):allRes.filter(a=>a.confidence===l))}
 function dlFile(){if(outFN)window.location.href=`/api/download/${outFN}`}
-function resetUp(){const jobId=localStorage.getItem('sq_active_batch_job');if(jobId){fetch('/api/jobs/'+jobId,{method:'DELETE'}).catch(()=>{});localStorage.removeItem('sq_active_batch_job')}upFile=null;outFN='';allRes=[];document.getElementById('fileName').textContent='';document.getElementById('configCard').style.display='none';document.getElementById('progressSection').classList.remove('vis');document.getElementById('resultsSection').classList.remove('vis');document.getElementById('progressBar').style.width='0%';document.getElementById('progressLog').innerHTML='';document.getElementById('fileInput').value='';updateJobsBadge()}
+function resetUp(){const jobId=localStorage.getItem(userKey('sq_active_batch_job'));if(jobId){fetch('/api/jobs/'+jobId,{method:'DELETE'}).catch(()=>{});localStorage.removeItem(userKey('sq_active_batch_job'))}upFile=null;outFN='';allRes=[];document.getElementById('fileName').textContent='';document.getElementById('configCard').style.display='none';document.getElementById('progressSection').classList.remove('vis');document.getElementById('resultsSection').classList.remove('vis');document.getElementById('progressBar').style.width='0%';document.getElementById('progressLog').innerHTML='';document.getElementById('fileInput').value='';updateJobsBadge()}
 async function ldBatchFw(){try{const r=await fetch('/api/bank/frameworks');const fs=await r.json();const sel=document.getElementById('batchFramework');sel.innerHTML='<option value="">None (Custom)</option>'+fs.map(f=>`<option value="${esc(f.name)}">${esc(f.name)}</option>`).join('');sel._fwData=fs}catch{}}
 async function ldMigFw(){try{const r=await fetch('/api/bank/frameworks');const fs=await r.json();const sel=document.getElementById('migFramework');if(!sel)return;sel.innerHTML='<option value="">Any Framework</option>'+fs.map(f=>f.versions.map(v=>`<option value="${esc(f.name+'|'+v)}">${esc(f.name)} — ${esc(v)}</option>`)).flat().join('');sel._fwData=fs}catch{}}
 function updBatchVer(){const sel=document.getElementById('batchFramework');const fs=sel._fwData||[];const fw=fs.find(f=>f.name===sel.value);const ver=document.getElementById('batchVersion');ver.innerHTML=fw?(fw.versions||[]).map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join(''):'<option value="">—</option>'}
@@ -556,11 +578,11 @@ else{clearInterval(pInt);gtError('import',d.error||'Unknown error');iProg.innerH
 catch(e){clearInterval(pInt);gtError('import',e.message);iProg.innerHTML=`<div class="imp-loading" style="border-color:var(--rd)"><div style="font-size:24px;margin-bottom:8px">&#x274C;</div><div style="color:var(--rd);font-weight:600;margin-bottom:4px">Import failed</div><div style="font-size:12px;color:var(--tx2)">${esc(e.message)}</div><button class="bb sec" style="margin-top:12px" data-action="resetImp">Try Again</button></div>`}}
 let mSF=null,mTF=null,mMaps=[],mSessionId=null;
 async function hMF(t,f){if(!f)return;const box=document.getElementById(t==='source'?'mSB':'mTB');box.classList.add('uploading');document.getElementById(t==='source'?'mSN':'mTN').textContent='Uploading...';document.getElementById(t==='source'?'mSC':'mTC').textContent='';const fd=new FormData();fd.append('file',f);try{const r=await fetch('/api/upload',{method:'POST',body:fd});const d=await r.json();if(d.error){alert(d.error);document.getElementById(t==='source'?'mSN':'mTN').textContent='Select '+(t==='source'?'source':'target')+' file';return}box.classList.remove('uploading');box.classList.add('ld');document.getElementById(t==='source'?'mSN':'mTN').textContent=f.name;const tr=d.sheets?.reduce((s,x)=>s+x.rowCount,0)||0;document.getElementById(t==='source'?'mSC':'mTC').textContent=`${tr} rows`;if(t==='source')mSF=f;else mTF=f;document.getElementById('migBtn').disabled=!(mSF&&mTF)}catch(e){alert(e.message);document.getElementById(t==='source'?'mSN':'mTN').textContent='Select '+(t==='source'?'source':'target')+' file'}finally{box.classList.remove('uploading')}}
-async function startMig(){const ak=localStorage.getItem('anthropic_api_key')||'';if(!ak&&!window._hasServerApiKey){alert('Set your Claude API key in Admin → Authentication');return}if(!mSF||!mTF){alert('Please select both source and target files.');return}const b=document.getElementById('migBtn');b.disabled=true;b.classList.add('running');b.textContent='Migrating...';document.getElementById('migForm').style.display='none';const prg=document.getElementById('migPrg');prg.classList.add('vis');document.getElementById('migRes').style.display='none';setTimeout(()=>prg.scrollIntoView({behavior:'smooth',block:'nearest'}),100);gtAdd('migrate','HECVAT Migration','migrate');const fd=new FormData();fd.append('sourceFile',mSF);fd.append('targetFile',mTF);fd.append('apiKey',ak);try{const r=await fetch('/api/migrate',{method:'POST',body:fd});const d=await r.json();if(d.error){alert(d.error);gtError('migrate',d.error);b.disabled=false;b.classList.remove('running');b.textContent='Start Migration';return}const jobId=d.jobId;localStorage.setItem('sq_active_mig_job',jobId);const pInt=setInterval(async()=>{try{const jr=await fetch('/api/jobs/'+jobId);const j=await jr.json();if(j.error){clearInterval(pInt);alert(j.error);gtError('migrate',j.error);b.disabled=false;b.classList.remove('running');b.textContent='Start Migration';localStorage.removeItem('sq_active_mig_job');return}document.getElementById('migBar').style.width=j.progress+'%';document.getElementById('migPT').textContent=j.step;updateJobsBadge();if(j.status==='complete'){clearInterval(pInt);mMaps=j.result.mappings;mSessionId=j.result.sessionId||null;shMR(j.result);gtDone('migrate');b.disabled=false;b.classList.remove('running');b.textContent='Start Migration';localStorage.removeItem('sq_active_mig_job')}else if(j.status==='error'){clearInterval(pInt);alert(j.error);gtError('migrate',j.error);b.disabled=false;b.classList.remove('running');b.textContent='Start Migration';localStorage.removeItem('sq_active_mig_job')}}catch{}},2000)}catch(e){alert(e.message);gtError('migrate',e.message);b.disabled=false;b.classList.remove('running');b.textContent='Start Migration'}}
+async function startMig(){if(!window._hasServerApiKey){alert('Set the Claude API key in Admin → Authentication');return}if(!mSF||!mTF){alert('Please select both source and target files.');return}const b=document.getElementById('migBtn');b.disabled=true;b.classList.add('running');b.textContent='Migrating...';document.getElementById('migForm').style.display='none';const prg=document.getElementById('migPrg');prg.classList.add('vis');document.getElementById('migRes').style.display='none';setTimeout(()=>prg.scrollIntoView({behavior:'smooth',block:'nearest'}),100);gtAdd('migrate','HECVAT Migration','migrate');const fd=new FormData();fd.append('sourceFile',mSF);fd.append('targetFile',mTF);try{const r=await fetch('/api/migrate',{method:'POST',body:fd});const d=await r.json();if(d.error){alert(d.error);gtError('migrate',d.error);b.disabled=false;b.classList.remove('running');b.textContent='Start Migration';return}const jobId=d.jobId;localStorage.setItem(userKey('sq_active_mig_job'),jobId);const pInt=setInterval(async()=>{try{const jr=await fetch('/api/jobs/'+jobId);const j=await jr.json();if(j.error){clearInterval(pInt);alert(j.error);gtError('migrate',j.error);b.disabled=false;b.classList.remove('running');b.textContent='Start Migration';localStorage.removeItem(userKey('sq_active_mig_job'));return}document.getElementById('migBar').style.width=j.progress+'%';document.getElementById('migPT').textContent=j.step;updateJobsBadge();if(j.status==='complete'){clearInterval(pInt);mMaps=j.result.mappings;mSessionId=j.result.sessionId||null;shMR(j.result);gtDone('migrate');b.disabled=false;b.classList.remove('running');b.textContent='Start Migration';localStorage.removeItem(userKey('sq_active_mig_job'))}else if(j.status==='error'){clearInterval(pInt);alert(j.error);gtError('migrate',j.error);b.disabled=false;b.classList.remove('running');b.textContent='Start Migration';localStorage.removeItem(userKey('sq_active_mig_job'))}}catch{}},2000)}catch(e){alert(e.message);gtError('migrate',e.message);b.disabled=false;b.classList.remove('running');b.textContent='Start Migration'}}
 function shMR(d){document.getElementById('migForm').style.display='none';document.getElementById('migPrg').classList.remove('vis');const _mr=document.getElementById('migRes');_mr.style.display='block';_mr.classList.remove('anim');void _mr.offsetWidth;_mr.classList.add('anim');document.getElementById('migT').textContent=d.targetCount;document.getElementById('migH').textContent=d.mappings.filter(m=>m.matchConfidence==='high').length;document.getElementById('migM').textContent=d.mappings.filter(m=>m.matchConfidence==='medium').length;document.getElementById('migL').textContent=d.mappings.filter(m=>m.matchConfidence==='low'||m.matchConfidence==='none').length;rMM(d.mappings)}
 function rMM(ms){document.getElementById('mMap').innerHTML=`<div class="mmr hd"><div>ID</div><div>Target Question</div><div>Match</div><div>Answer</div></div>`+ms.map(m=>`<div class="mmr"><div style="font-weight:600;font-size:10px">${esc(m.targetId||'')}</div><div><div class="mq">${esc(m.targetQuestion||'')}</div>${m.sourceId?`<div style="font-size:9px;color:var(--tx3);margin-top:2px">From: [${esc(m.sourceId)}]</div>`:''}</div><div><span class="badge ${m.matchConfidence}">${m.matchConfidence}</span></div><div>${m.migratedAnswer?`<div class="maa">${esc(m.migratedAnswer.substring(0,180))}${m.migratedAnswer.length>180?'...':''}</div>`:'<span style="color:var(--tx3);font-size:10px">No answer</span>'}${m.notes?`<div style="font-size:9px;color:var(--tx3);margin-top:1px">${esc(m.notes)}</div>`:''}</div></div>`).join('')}
 function fMig(l,b){document.querySelectorAll('#migRes .fbtn').forEach(x=>x.classList.remove('on'));b.classList.add('on');rMM(l==='all'?mMaps:mMaps.filter(m=>m.matchConfidence===l))}
-function resetMig(){const jobId=localStorage.getItem('sq_active_mig_job');if(jobId){fetch('/api/jobs/'+jobId,{method:'DELETE'}).catch(()=>{});localStorage.removeItem('sq_active_mig_job')}mSF=null;mTF=null;mMaps=[];mSessionId=null;const sb=document.getElementById('mSB'),tb=document.getElementById('mTB');sb.classList.remove('ld','over');tb.classList.remove('ld','over');document.getElementById('mSN').textContent='Select source file';document.getElementById('mSC').textContent='';document.getElementById('mTN').textContent='Select target file';document.getElementById('mTC').textContent='';document.getElementById('mSI').value='';document.getElementById('mTI').value='';const btn=document.getElementById('migBtn');btn.disabled=true;btn.textContent='Start Migration';btn.classList.remove('running');document.getElementById('migPrg').classList.remove('vis');const mr=document.getElementById('migRes');mr.style.display='none';mr.classList.remove('anim');document.getElementById('migBar').style.width='0%';document.getElementById('migPT').textContent='Starting...';document.getElementById('migForm').style.display='';}
+function resetMig(){const jobId=localStorage.getItem(userKey('sq_active_mig_job'));if(jobId){fetch('/api/jobs/'+jobId,{method:'DELETE'}).catch(()=>{});localStorage.removeItem(userKey('sq_active_mig_job'))}mSF=null;mTF=null;mMaps=[];mSessionId=null;const sb=document.getElementById('mSB'),tb=document.getElementById('mTB');sb.classList.remove('ld','over');tb.classList.remove('ld','over');document.getElementById('mSN').textContent='Select source file';document.getElementById('mSC').textContent='';document.getElementById('mTN').textContent='Select target file';document.getElementById('mTC').textContent='';document.getElementById('mSI').value='';document.getElementById('mTI').value='';const btn=document.getElementById('migBtn');btn.disabled=true;btn.textContent='Start Migration';btn.classList.remove('running');document.getElementById('migPrg').classList.remove('vis');const mr=document.getElementById('migRes');mr.style.display='none';mr.classList.remove('anim');document.getElementById('migBar').style.width='0%';document.getElementById('migPT').textContent='Starting...';document.getElementById('migForm').style.display='';}
 async function expMig(){try{const r=await fetch('/api/migrate/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mappings:mMaps,sessionId:mSessionId})});const d=await r.json();if(d.success){window.location.href=`/api/download/${d.file}`;setTimeout(resetMig,1500);}else alert(d.error||'')}catch(e){alert(e.message)}}
 // Calendar/Board view toggle
 function swCalView(view,btn){
@@ -613,8 +635,7 @@ if(btn)btn.classList.add('active');
 if(mode==='system'){const dk=window.matchMedia('(prefers-color-scheme:dark)').matches;document.documentElement.className=dk?'':'light'}
 else if(mode==='light')document.documentElement.className='light';
 else document.documentElement.className=''}
-(function(){const t=localStorage.getItem('sq_theme')||'dark';const btn=document.getElementById(t==='light'?'thLight':t==='system'?'thSys':'thDark');setTheme(t,btn);
-window.matchMedia('(prefers-color-scheme:dark)').addEventListener('change',()=>{if(localStorage.getItem('sq_theme')==='system')setTheme('system',document.getElementById('thSys'))})
+(function(){const t=localStorage.getItem('sq_theme')||'dark';const btn=document.getElementById(t==='light'?'thLight':'thDark');setTheme(t,btn);
   // --- histBody: hitem click (loadConv) and hitem-del click (delConv) ---
   var histBody = document.getElementById('histBody');
   if (histBody) {
@@ -672,17 +693,22 @@ let question='';const msgs=document.querySelectorAll('.msg');for(let i=0;i<msgs.
 // Strip sources from answer
 let answer=raw.replace(/---\n\*\*Sources:[\s\S]*$/,'').replace(/\*\*Sources:[\s\S]*$/,'').trim();
 document.getElementById('saveQ').value=question;document.getElementById('saveA').value=answer;
-// Populate category dropdown
-fetch('/api/bank/categories').then(r=>r.json()).then(cats=>{document.getElementById('saveCat').innerHTML=cats.map(c=>`<option value="${c.name}">${c.name}</option>`).join('')});
-// Populate product dropdown
-loadProducts();const pSel=document.getElementById('saveProd');pSel.innerHTML='<option value="">Org-wide (all products)</option>';document.querySelectorAll('#chatProduct option').forEach(o=>{if(o.value)pSel.innerHTML+=`<option value="${o.value}">${o.textContent}</option>`});
-// Set product to current selection
-pSel.value=document.getElementById('chatProduct').value;
+// Populate category dropdown with "Add new…" option
+const catSel=document.getElementById('saveCat');const catNew=document.getElementById('saveCatNew');
+fetch('/api/bank/categories').then(r=>r.json()).then(cats=>{catSel.innerHTML=cats.map(c=>`<option value="${c.name}">${c.name}</option>`).join('')+'<option value="__new__">＋ Add new category…</option>'});
+catSel.onchange=()=>{if(catSel.value==='__new__'){catNew.style.display='block';catNew.focus()}else{catNew.style.display='none';catNew.value=''}};
+catNew.style.display='none';catNew.value='';
+// Populate product dropdown from API
+const pSel=document.getElementById('saveProd');
+fetch('/api/products').then(r=>r.json()).then(ps=>{pSel.innerHTML='<option value="">Org-wide (all products)</option>'+ps.map(p=>`<option value="${p}">${pLabel(p)}</option>`).join('');pSel.value=document.getElementById('chatProduct').value||''});
 document.getElementById('saveRes').style.display='none';document.getElementById('saveModal').classList.add('vis')}
 async function doSaveAnswer(){
 const q=document.getElementById('saveQ').value.trim();const a=document.getElementById('saveA').value.trim();
+const catSel=document.getElementById('saveCat');const catNew=document.getElementById('saveCatNew');
+let category=catSel.value==='__new__'?catNew.value.trim().toLowerCase().replace(/\s+/g,'-'):catSel.value;
 if(!q||!a){alert('Both question and answer required');return}
-try{const r=await fetch('/api/bank/save-answer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q,answer:a,category:document.getElementById('saveCat').value,product:document.getElementById('saveProd').value,source:'Chat correction via dashboard'})});
+if(catSel.value==='__new__'&&!category){alert('Please enter a name for the new category');return}
+try{const r=await fetch('/api/bank/save-answer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q,answer:a,category,product:document.getElementById('saveProd').value,source:'Chat correction via dashboard'})});
 const d=await r.json();const res=document.getElementById('saveRes');res.style.display='block';
 if(d.success){res.className='save-res ok';res.textContent=`Saved to ${d.path}`;setTimeout(()=>document.getElementById('saveModal').classList.remove('vis'),2000)}
 else{res.className='save-res err';res.textContent=d.error||'Failed'}}catch(e){const res=document.getElementById('saveRes');res.style.display='block';res.className='save-res err';res.textContent=e.message}}
@@ -719,8 +745,8 @@ async function loadUsers() {
         <td>${adminBadge}</td>
         <td style="font-size:10px;color:var(--tx3)">${u.createdAt ? u.createdAt.slice(0,10) : ''}</td>
         <td style="white-space:nowrap">
-          <button class="bb sec" onclick="openEditUser('${u.id}','${esc(u.username)}','${u.role}',${u.canAccessAdmin})" style="font-size:10px;padding:3px 9px;margin-right:4px">Edit</button>
-          ${!isSelf ? `<button class="bb" onclick="deleteUser('${u.id}','${esc(u.username)}')" style="font-size:10px;padding:3px 9px;background:var(--rd);border-color:var(--rd)">Delete</button>` : ''}
+          <button class="bb sec" data-action="edit-user" data-id="${u.id}" data-username="${esc(u.username)}" data-role="${u.role}" data-canadmin="${u.canAccessAdmin}" style="font-size:10px;padding:3px 9px;margin-right:4px">Edit</button>
+          ${!isSelf ? `<button class="bb" data-action="delete-user" data-id="${u.id}" data-username="${esc(u.username)}" style="font-size:10px;padding:3px 9px;background:var(--rd);border-color:var(--rd)">Delete</button>` : ''}
         </td>
       </tr>`;
     }).join('');
@@ -758,14 +784,20 @@ function openEditUser(id, username, role, canAccessAdmin) {
   document.getElementById('editUserName').textContent = username;
   document.getElementById('editRole').value = role;
   document.getElementById('editCanAdmin').checked = !!canAccessAdmin;
-  document.getElementById('editCanAdmin').disabled = role === 'admin';
   document.getElementById('editPassword').value = '';
   document.getElementById('editUserResult').style.display = 'none';
+  var wrap = document.getElementById('editCanAdminWrap');
+  if (wrap) wrap.style.display = role === 'admin' ? 'block' : 'none';
   document.getElementById('editUserModal').style.display = 'flex';
-  // Disable canAdmin when role is admin
   document.getElementById('editRole').onchange = function() {
-    document.getElementById('editCanAdmin').disabled = this.value === 'admin';
-    if (this.value === 'admin') document.getElementById('editCanAdmin').checked = true;
+    var w = document.getElementById('editCanAdminWrap');
+    if (this.value === 'admin') {
+      document.getElementById('editCanAdmin').checked = true;
+      if (w) w.style.display = 'block';
+    } else {
+      document.getElementById('editCanAdmin').checked = false;
+      if (w) w.style.display = 'none';
+    }
   };
 }
 
@@ -801,16 +833,16 @@ async function deleteUser(id, username) {
 
 async function loadAdminSettings(){
 // Load AI model
-const m=localStorage.getItem('sq_model')||'claude-opus-4-20250514';
+const m=localStorage.getItem(userKey('sq_model'))||'claude-opus-4-20250514';
 const modSel=document.getElementById('cfgAIModel');if(modSel)modSel.value=m;
 // Confidence threshold
-const thr=document.getElementById('cfgConfThreshold');if(thr){thr.value=localStorage.getItem('sq_conf_threshold')||'60';document.getElementById('cfgConfThreshVal').textContent=thr.value+'%';thr.oninput=()=>{document.getElementById('cfgConfThreshVal').textContent=thr.value+'%';localStorage.setItem('sq_conf_threshold',thr.value)}}
+const thr=document.getElementById('cfgConfThreshold');if(thr){thr.value=localStorage.getItem(userKey('sq_conf_threshold'))||'60';document.getElementById('cfgConfThreshVal').textContent=thr.value+'%';thr.oninput=()=>{document.getElementById('cfgConfThreshVal').textContent=thr.value+'%';localStorage.setItem(userKey('sq_conf_threshold'),thr.value)}}
 // Checkboxes — load saved state
-['cfgAutoSources','cfgSearchConf','cfgSearchJira'].forEach(id=>{const cb=document.getElementById(id);if(!cb)return;const saved=localStorage.getItem('sq_'+id);if(saved!==null)cb.checked=saved==='true';cb.onchange=()=>localStorage.setItem('sq_'+id,cb.checked)});
+['cfgAutoSources','cfgSearchConf','cfgSearchJira'].forEach(id=>{const cb=document.getElementById(id);if(!cb)return;const saved=localStorage.getItem(userKey('sq_'+id));if(saved!==null)cb.checked=saved==='true';cb.onchange=()=>localStorage.setItem(userKey('sq_'+id),cb.checked)});
 // Atlassian fields — restore from localStorage
-const atlUrl=document.getElementById('cfgAtlUrl');if(atlUrl){const sv=localStorage.getItem('sq_atl_url');if(sv)atlUrl.value=sv}
-const atlEmail=document.getElementById('cfgAtlEmail');if(atlEmail){const sv=localStorage.getItem('sq_atl_email');if(sv)atlEmail.value=sv}
-const atlProject=document.getElementById('cfgAtlProject');if(atlProject){const sv=localStorage.getItem('sq_jira_project');if(sv)atlProject.value=sv}
+const atlUrl=document.getElementById('cfgAtlUrl');if(atlUrl){const sv=localStorage.getItem(userKey('sq_atl_url'));if(sv)atlUrl.value=sv}
+const atlEmail=document.getElementById('cfgAtlEmail');if(atlEmail){const sv=localStorage.getItem(userKey('sq_atl_email'));if(sv)atlEmail.value=sv}
+const atlProject=document.getElementById('cfgAtlProject');if(atlProject){const sv=localStorage.getItem(userKey('sq_jira_project'));if(sv)atlProject.value=sv}
 // Bank stats
 refreshBankStats();
 // System status
@@ -820,16 +852,16 @@ checkSystemStatus();
 
 async function saveAtlassianConfig(){const url=document.getElementById('cfgAtlUrl').value.trim();const email=document.getElementById('cfgAtlEmail').value.trim();const token=document.getElementById('cfgAtlToken').value.trim();const project=document.getElementById('cfgAtlProject').value.trim();const res=document.getElementById('cfgAtlResult');
 if(!url||!email){res.style.display='flex';res.className='admin-result err';res.textContent='Instance URL and email are required';return}
-localStorage.setItem('sq_atl_url',url);localStorage.setItem('sq_atl_email',email);localStorage.setItem('sq_jira_project',project||'ISC');
+localStorage.setItem(userKey('sq_atl_url'),url);localStorage.setItem(userKey('sq_atl_email'),email);localStorage.setItem(userKey('sq_jira_project'),project||'ISC');
 if(!token){res.style.display='flex';res.className='admin-result warn';res.textContent='Enter API token to save new credentials';return}
 res.style.display='flex';res.className='admin-result warn';res.textContent='Authenticating...';
-try{const r=await fetch('/api/atlassian/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({base:url,email,token,project:project||'ISC'})});const d=await r.json();if(r.ok){res.className='admin-result ok';res.textContent=d.message||'Connected successfully';document.getElementById('cfgAtlToken').value='';document.getElementById('cfgAtlToken').placeholder='API token saved — only enter to change';if(d.project)document.getElementById('sysProject').textContent=d.project;localStorage.setItem('sq_jira_project',d.project||project);checkSystemStatus()}else{res.className='admin-result err';res.textContent=d.error||'Authentication failed'}}catch(e){res.className='admin-result err';res.textContent=e.message}}
+try{const r=await fetch('/api/atlassian/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({base:url,email,token,project:project||'ISC'})});const d=await r.json();if(r.ok){res.className='admin-result ok';res.textContent=d.message||'Connected successfully';document.getElementById('cfgAtlToken').value='';document.getElementById('cfgAtlToken').placeholder='API token saved — only enter to change';if(d.project)document.getElementById('sysProject').textContent=d.project;localStorage.setItem(userKey('sq_jira_project'),d.project||project);checkSystemStatus()}else{res.className='admin-result err';res.textContent=d.error||'Authentication failed'}}catch(e){res.className='admin-result err';res.textContent=e.message}}
 
 function toggleJiraSettings(){const panel=document.getElementById('jiraSettingsPanel');const chevron=document.getElementById('jiraSettingsChevron');if(!panel)return;const open=panel.style.display==='none'||panel.style.display==='';panel.style.display=open?'block':'none';if(chevron)chevron.style.transform=open?'rotate(180deg)':'';if(open){const isAdmin=_currentUser&&_currentUser.role==='admin';const adminForm=document.getElementById('jiraAdminForm');const userView=document.getElementById('jiraUserView');if(adminForm)adminForm.style.display=isAdmin?'none':'';if(userView)userView.style.display=isAdmin?'':'none';if(!isAdmin)loadJiraSettingsFields()}}
 document.addEventListener('DOMContentLoaded',function(){const bar=document.getElementById('jiraSettingsBar');if(bar){const hdr=bar.querySelector('[data-jira-toggle]')||bar.firstElementChild;if(hdr)hdr.addEventListener('click',toggleJiraSettings)}});
-function loadJiraSettingsFields(){const url=localStorage.getItem('sq_atl_url')||'';const email=localStorage.getItem('sq_atl_email')||'';const project=localStorage.getItem('sq_jira_project')||'ISC';const u=document.getElementById('jiraUrl');const e=document.getElementById('jiraEmail');const p=document.getElementById('jiraProject');if(u&&!u.value)u.value=url;if(e&&!e.value)e.value=email;if(p&&!p.value)p.value=project}
+function loadJiraSettingsFields(){const url=localStorage.getItem(userKey('sq_atl_url'))||'';const email=localStorage.getItem(userKey('sq_atl_email'))||'';const project=localStorage.getItem(userKey('sq_jira_project'))||'ISC';const u=document.getElementById('jiraUrl');const e=document.getElementById('jiraEmail');const p=document.getElementById('jiraProject');if(u&&!u.value)u.value=url;if(e&&!e.value)e.value=email;if(p&&!p.value)p.value=project}
 function updateJiraConnBadge(ok,label){const b=document.getElementById('jiraConnBadge');if(!b)return;b.textContent=label||(ok?'Connected':'Not configured');b.style.background=ok?'var(--gn)22':'var(--tx3)22';b.style.color=ok?'var(--gn)':'var(--tx3)'}
-async function saveJiraSettings(){const url=document.getElementById('jiraUrl').value.trim();const email=document.getElementById('jiraEmail').value.trim();const token=document.getElementById('jiraToken').value.trim();const project=(document.getElementById('jiraProject').value.trim()||'ISC').toUpperCase();const res=document.getElementById('jiraSettingsResult');res.style.display='none';if(!url||!email){res.style.display='inline-block';res.style.background='var(--rd)22';res.style.color='var(--rd)';res.textContent='URL and email are required';return}localStorage.setItem('sq_atl_url',url);localStorage.setItem('sq_atl_email',email);localStorage.setItem('sq_jira_project',project);// also sync admin fields if they exist
+async function saveJiraSettings(){const url=document.getElementById('jiraUrl').value.trim();const email=document.getElementById('jiraEmail').value.trim();const token=document.getElementById('jiraToken').value.trim();const project=(document.getElementById('jiraProject').value.trim()||'ISC').toUpperCase();const res=document.getElementById('jiraSettingsResult');res.style.display='none';if(!url||!email){res.style.display='inline-block';res.style.background='var(--rd)22';res.style.color='var(--rd)';res.textContent='URL and email are required';return}localStorage.setItem(userKey('sq_atl_url'),url);localStorage.setItem(userKey('sq_atl_email'),email);localStorage.setItem(userKey('sq_jira_project'),project);// also sync admin fields if they exist
 const au=document.getElementById('cfgAtlUrl');const ae=document.getElementById('cfgAtlEmail');const ap=document.getElementById('cfgAtlProject');if(au)au.value=url;if(ae)ae.value=email;if(ap)ap.value=project;if(!token){res.style.display='inline-block';res.style.background='var(--warn,#f59e0b)22';res.style.color='var(--warn,#f59e0b)';res.textContent='Enter API token to authenticate';return}res.style.display='inline-block';res.style.background='var(--tx3)22';res.style.color='var(--tx3)';res.textContent='Connecting...';try{const r=await fetch('/api/atlassian/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({base:url,email,token,project})});const d=await r.json();if(r.ok){res.style.background='var(--gn)22';res.style.color='var(--gn)';res.textContent=d.message||'Connected';document.getElementById('jiraToken').value='';document.getElementById('jiraToken').placeholder='Token saved — enter to update';updateJiraConnBadge(true,'Connected');checkSystemStatus();ldCal();ldTickets()}else{res.style.background='var(--rd)22';res.style.color='var(--rd)';res.textContent=d.error||'Authentication failed';updateJiraConnBadge(false,'Auth failed')}}catch(e){res.style.background='var(--rd)22';res.style.color='var(--rd)';res.textContent=e.message}}
 async function testJiraConn(){const res=document.getElementById('jiraSettingsResult');res.style.display='inline-block';res.style.background='var(--tx3)22';res.style.color='var(--tx3)';res.textContent='Testing...';try{const r=await fetch('/api/jira/test',{method:'POST'});const d=await r.json();if(d.success){res.style.background='var(--gn)22';res.style.color='var(--gn)';res.textContent='Jira: '+d.message;updateJiraConnBadge(true,'Connected')}else{res.style.background='var(--rd)22';res.style.color='var(--rd)';res.textContent='Jira: '+(d.error||'Failed');updateJiraConnBadge(false,'Error')}}catch(e){res.style.background='var(--rd)22';res.style.color='var(--rd)';res.textContent=e.message}}
 async function testAtlassianConn(){const res=document.getElementById('cfgAtlResult');res.style.display='flex';res.className='admin-result warn';res.textContent='Testing connections...';
@@ -850,8 +882,7 @@ try{const r=await fetch('/api/confluence/test',{method:'POST'});const d=await r.
 try{const r=await fetch('/api/jira/test',{method:'POST'});const d=await r.json();setBadge('sysJira',d.success?'Connected':'Error',d.success?'ok':'err')}catch{setBadge('sysJira','Not configured','warn')}
 try{const r=await fetch('/api/atlassian/project');const d=await r.json();setBadge('sysProject',d.project||'ISC','ok');const inp=document.getElementById('cfgAtlProject');if(inp&&d.project)inp.value=d.project}catch{}
 try{const r=await fetch('/api/debug/bank-stats');const d=await r.json();setBadge('sysBank',`${d.totalFiles} files`,'ok')}catch{setBadge('sysBank','Error','err')}
-const ak=localStorage.getItem('anthropic_api_key');
-if(ak||window._hasServerApiKey){setBadge('sysAI','Verifying...','warn');try{const r=await fetch('/api/test-api-key',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:ak||''})});const d=await r.json();setBadge('sysAI',d.success?(window._hasServerApiKey&&!ak?'Connected (server key)':'Connected'):d.error||'Invalid key',d.success?'ok':'err')}catch{setBadge('sysAI','Error','err')}}
+if(window._hasServerApiKey){setBadge('sysAI','Verifying...','warn');try{const r=await fetch('/api/test-api-key',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});const d=await r.json();setBadge('sysAI',d.success?'Connected':d.error||'Invalid key',d.success?'ok':'err')}catch{setBadge('sysAI','Error','err')}}
 else{setBadge('sysAI','No API key','warn')}}
 
 /* ── Global Task Tracker ── */
@@ -936,7 +967,12 @@ setInterval(refreshBankStats,30000);
 
   // --- Hamburger sidebar toggle ---
   var hamBtn = document.querySelector('.ham');
-  if (hamBtn) hamBtn.addEventListener('click', function() { document.getElementById('sb').classList.toggle('shut'); });
+  if (hamBtn) hamBtn.addEventListener('click', function() {
+    var sb = document.getElementById('sb');
+    sb.classList.toggle('shut');
+    localStorage.setItem('sq_sb_collapsed', sb.classList.contains('shut') ? '1' : '0');
+  });
+  if (localStorage.getItem('sq_sb_collapsed') === '1') document.getElementById('sb').classList.add('shut');
 
   // --- Model select ---
   var modelSelect = document.getElementById('modelSelect');
@@ -945,10 +981,8 @@ setInterval(refreshBankStats,30000);
   // --- Theme toggle buttons ---
   var thDark = document.getElementById('thDark');
   var thLight = document.getElementById('thLight');
-  var thSys = document.getElementById('thSys');
   if (thDark) thDark.addEventListener('click', function() { setTheme('dark', this); });
   if (thLight) thLight.addEventListener('click', function() { setTheme('light', this); });
-  if (thSys) thSys.addEventListener('click', function() { setTheme('system', this); });
 
   // --- Chat textarea ---
   var chIn = document.getElementById('chIn');
@@ -1163,12 +1197,29 @@ setInterval(refreshBankStats,30000);
   // Close edit modal on backdrop click
   var editUserModal = document.getElementById('editUserModal');
   if (editUserModal) editUserModal.addEventListener('click', function(e) { if (e.target === this) this.style.display='none'; });
-  // Auto-check canAdmin when role=admin in create form
+  // Edit/Delete buttons in users table (event delegation — buttons are dynamically rendered)
+  var usersBody = document.getElementById('usersBody');
+  if (usersBody) usersBody.addEventListener('click', function(e) {
+    var btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    if (btn.dataset.action === 'edit-user') {
+      openEditUser(btn.dataset.id, btn.dataset.username, btn.dataset.role, btn.dataset.canadmin === 'true');
+    } else if (btn.dataset.action === 'delete-user') {
+      deleteUser(btn.dataset.id, btn.dataset.username);
+    }
+  });
+  // Show/hide canAdmin checkbox based on role in create form
   var newRole = document.getElementById('newRole');
   if (newRole) newRole.addEventListener('change', function() {
     var cb = document.getElementById('newCanAdmin');
-    if (this.value === 'admin') { cb.checked = true; cb.disabled = true; }
-    else { cb.disabled = false; }
+    var wrap = document.getElementById('newCanAdminWrap');
+    if (this.value === 'admin') {
+      cb.checked = true; cb.disabled = true;
+      if (wrap) wrap.style.display = 'flex';
+    } else {
+      cb.checked = false; cb.disabled = false;
+      if (wrap) wrap.style.display = 'none';
+    }
   });
 
   // --- Sidebar logout button ---
