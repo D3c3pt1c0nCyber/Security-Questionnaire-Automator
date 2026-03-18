@@ -42,6 +42,12 @@ package-lock.json
 .npm
 
 # ==============================================================
+# RUNTIME DATA — may contain credentials/hashes/PII
+# ==============================================================
+data/users.json
+data/activity-logs.json
+
+# ==============================================================
 # LOGS — may contain tokens/keys in request logs
 # ==============================================================
 *.log

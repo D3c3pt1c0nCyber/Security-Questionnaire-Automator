@@ -163,6 +163,13 @@ function sanitizeJql(str) {
   return (str || '').replace(/[\\"\[\]{}()+\-&|!^~*?:]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+// Sanitize error messages — strip internal file paths before sending to client
+function safeError(err) {
+  const msg = (err?.message || String(err) || 'Unknown error');
+  // Remove absolute file paths (Unix and Windows style)
+  return msg.replace(/([A-Za-z]:)?[\\/][\w\s\\/.\-]*(app|home|usr|var|tmp|data|uploads|Users)[\w\s\\/.\-]*/gi, '[path]');
+}
+
 // Strip HTML/XML tags and collapse whitespace
 function stripTags(text) {
   return (text || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -749,7 +756,7 @@ app.post('/api/test-api-key', (req, res) => {
       }
     });
   });
-  apiReq.on('error', (err) => res.status(500).json({ error: err.message }));
+  apiReq.on('error', (err) => res.status(500).json({ error: safeError(err) }));
   apiReq.setTimeout(10000, () => { apiReq.destroy(); res.status(504).json({ error: 'Connection timed out' }); });
   apiReq.write(body);
   apiReq.end();
@@ -784,7 +791,7 @@ app.post('/api/products', (req, res) => {
     fs.mkdirSync(path.join(prodDir, 'overrides'), { recursive: true });
     res.json({ success: true, name: safeName });
   } catch (e) {
-    res.json({ success: false, error: e.message });
+    res.json({ success: false, error: safeError(e) });
   }
 });
 
@@ -799,7 +806,7 @@ app.delete('/api/products/:name', (req, res) => {
     fs.renameSync(prodDir, archiveDir);
     res.json({ success: true });
   } catch (e) {
-    res.json({ success: false, error: e.message });
+    res.json({ success: false, error: safeError(e) });
   }
 });
 
@@ -815,7 +822,7 @@ app.post('/api/frameworks', (req, res) => {
     fs.mkdirSync(fwDir, { recursive: true });
     res.json({ success: true, name: safeName });
   } catch (e) {
-    res.json({ success: false, error: e.message });
+    res.json({ success: false, error: safeError(e) });
   }
 });
 
@@ -830,7 +837,7 @@ app.delete('/api/frameworks/:name', (req, res) => {
     fs.renameSync(fwDir, archiveDir);
     res.json({ success: true });
   } catch (e) {
-    res.json({ success: false, error: e.message });
+    res.json({ success: false, error: safeError(e) });
   }
 });
 
@@ -849,7 +856,7 @@ app.post('/api/frameworks/:name/versions', (req, res) => {
     fs.mkdirSync(path.join(verDir, 'completed'), { recursive: true });
     res.json({ success: true, version: safeVer });
   } catch (e) {
-    res.json({ success: false, error: e.message });
+    res.json({ success: false, error: safeError(e) });
   }
 });
 
@@ -865,7 +872,7 @@ app.delete('/api/frameworks/:name/versions/:version', (req, res) => {
     fs.renameSync(verDir, archiveDir);
     res.json({ success: true });
   } catch (e) {
-    res.json({ success: false, error: e.message });
+    res.json({ success: false, error: safeError(e) });
   }
 });
 
@@ -883,7 +890,7 @@ app.get('/api/confluence/status', (_req, res) => {
   res.json({
     configured: !!(ATLASSIAN_BASE && ATLASSIAN_EMAIL && ATLASSIAN_TOKEN),
     baseUrl: ATLASSIAN_BASE ? `${ATLASSIAN_BASE}/wiki` : 'Not configured',
-    email: ATLASSIAN_EMAIL || 'Not configured',
+    email: ATLASSIAN_EMAIL ? '***@***' : 'Not configured',
     enabledConfluence: !!(ATLASSIAN_BASE && ATLASSIAN_EMAIL && ATLASSIAN_TOKEN)
   });
 });
@@ -1128,7 +1135,7 @@ app.post('/api/upload-multi', uploadLimiter, upload.array('files', 10), async (r
       });
     } catch (err) {
       try { if (fs.existsSync(file.path)) fs.unlinkSync(file.path); } catch {}
-      results.push({ fileName: file.originalname, error: err.message });
+      results.push({ fileName: file.originalname, error: safeError(err) });
     }
   }
   res.json(results);
@@ -1473,9 +1480,7 @@ async function runBatchJob(job, { filePath, fileType, sheetName, questionColumn,
       const sheet = workbook.Sheets[sheetName || workbook.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
       if (rows.length > 0) {
-        console.log('[debug] sheet columns:', Object.keys(rows[0]));
-        console.log('[debug] questionColumn param:', JSON.stringify(questionColumn));
-        console.log('[debug] first row sample:', JSON.stringify(rows[0]).slice(0, 200));
+        // columns available for mapping (not logged — may contain sensitive data)
       }
       questions = rows.map((row, idx) => ({
         index: idx,
@@ -1856,7 +1861,7 @@ app.get('/api/jira/ticket/:key', async (req, res) => {
       url: `${ATLASSIAN_BASE}/browse/${issue.key}`
     });
   } catch (err) {
-    res.json({ error: err.message });
+    res.json({ error: safeError(err) });
   }
 });
 
@@ -1933,7 +1938,7 @@ app.get('/api/jira/board', async (req, res) => {
     });
     res.json(columns);
   } catch (err) {
-    res.json({ backlog: [], assigned: [], inprogress: [], done: [], error: err.message });
+    res.json({ backlog: [], assigned: [], inprogress: [], done: [], error: safeError(err) });
   }
 });
 
@@ -2337,7 +2342,7 @@ async function runMigJob(job, { apiKey, sourceFilePath, targetFilePath, targetFi
       }
     });
   } catch (err) {
-    jobUpdate(job, { status: 'error', error: err.message });
+    jobUpdate(job, { status: 'error', error: safeError(err) });
   }
 }
 
@@ -2424,7 +2429,7 @@ app.post('/api/migrate/export', (req, res) => {
     XLSX.writeFile(wb, outputPath);
     res.json({ success: true, file: outputName });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: safeError(err) });
   }
 });
 
@@ -3268,7 +3273,7 @@ app.post('/api/bank/save-answer', (req, res) => {
       message: `Saved to ${bankRelPath(targetPath)}`
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: safeError(err) });
   }
 });
 
